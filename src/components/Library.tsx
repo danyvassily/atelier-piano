@@ -17,10 +17,13 @@ export function Library({ scores, selectedId, onSelect, onImport, onDelete }: Li
     return <MusicNote size={18} weight="fill" />;
   };
   const detailFor = (score: ScoreDocument) => {
-    if (score.sourceType === "pdf") return "PDF à convertir";
+    if (score.sourceType === "pdf") {
+      const linkedCount = scores.filter((candidate) => candidate.pdfSource?.pdfScoreId === score.id).length;
+      return linkedCount > 0 ? `PDF · ${linkedCount} exercice${linkedCount > 1 ? "s" : ""} lié${linkedCount > 1 ? "s" : ""}` : "PDF à convertir";
+    }
     if (score.sourceType === "lilypond") return "Source LilyPond";
-    if (score.sourceType === "transcription") return `${score.measureCount} mesures · brouillon IA`;
-    return `${score.measureCount} mesures`;
+    if (score.sourceType === "transcription") return `${score.measureCount} mesures · brouillon IA${score.pdfSource ? " · PDF lié" : ""}`;
+    return `${score.measureCount} mesures${score.pdfSource ? " · PDF lié" : ""}`;
   };
   return (
     <aside className="library-panel" aria-label="Bibliothèque de partitions">

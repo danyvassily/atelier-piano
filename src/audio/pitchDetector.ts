@@ -12,6 +12,21 @@ export interface CalibrationProfile {
   inputThreshold: number;
 }
 
+export interface MicLevel {
+  rms: number;
+  threshold: number;
+  midi?: number;
+}
+
+export type PitchRangeId = "full" | "grave" | "medium" | "aigu";
+
+export const PITCH_RANGES: Record<PitchRangeId, { minFreq: number; maxFreq: number; label: string }> = {
+  full: { minFreq: 27.5, maxFreq: 4186, label: "Tout le piano (La0 à Do8)" },
+  grave: { minFreq: 27.5, maxFreq: 440, label: "Registre grave (La0 à La4)" },
+  medium: { minFreq: 110, maxFreq: 1046, label: "Registre médium (La2 à Do6)" },
+  aigu: { minFreq: 220, maxFreq: 4186, label: "Registre aigu (La3 à Do8)" },
+};
+
 export function rootMeanSquare(buffer: Float32Array): number {
   let rms = 0;
   for (const sample of buffer) rms += sample * sample;
@@ -22,6 +37,8 @@ export function detectPitch(
   buffer: Float32Array,
   sampleRate: number,
   inputThreshold: number,
+  minFreq = 27.5,
+  maxFreq = 4186,
 ): (DetectedPitch & { rms: number }) | null {
   let mean = 0;
   for (const sample of buffer) mean += sample;
@@ -36,8 +53,10 @@ export function detectPitch(
   const rms = Math.sqrt(energy / centered.length);
   if (rms < inputThreshold) return null;
 
-  const minOffset = Math.max(2, Math.floor(sampleRate / 4300));
-  const maxOffset = Math.min(Math.floor(sampleRate / 27.5), Math.floor(buffer.length / 2));
+  const minOffset = Math.max(2, Math.floor(sampleRate / maxFreq));
+  const maxOffset = Math.min(Math.floor(sampleRate / minFreq), Math.floor(buffer.length / 2));
+  if (maxOffset <= minOffset) return null;
+
   let bestOffset = -1;
   let bestCorrelation = 0;
   const correlations = new Float32Array(maxOffset + 1);
@@ -64,22 +83,20 @@ export function detectPitch(
 
   if (bestOffset < 0 || bestCorrelation < 0.52) return null;
 
-  // Plusieurs multiples de la période peuvent avoir une corrélation presque
-  // identique. Choisir le premier sommet fiable évite de lire 110 Hz pour un
-  // La 440 Hz, tout en gardant le meilleur sommet pour les sons plus complexes.
+  // Les multiples de la période ont une corrélation presque identique.
+  // Le premier sommet fiable correspond à la fondamentale utile au cours.
   const peakThreshold = Math.max(0.58, bestCorrelation * 0.97);
   for (let offset = minOffset; offset < maxOffset; offset += 1) {
     const current = correlations[offset];
-    const previousValue = correlations[offset - 1] || -1;
-    const nextValue = correlations[offset + 1] || -1;
-    if (current >= peakThreshold && current >= previousValue && current > nextValue) {
+    const previous = correlations[offset - 1] || -1;
+    const next = correlations[offset + 1] || -1;
+    if (current >= peakThreshold && current >= previous && current > next) {
       bestOffset = offset;
       bestCorrelation = current;
       break;
     }
   }
 
-  // Interpolation parabolique : la fréquence est plus stable entre deux cases.
   const previous = correlations[bestOffset - 1] || bestCorrelation;
   const next = correlations[bestOffset + 1] || bestCorrelation;
   const denominator = previous - 2 * bestCorrelation + next;
@@ -88,6 +105,7 @@ export function detectPitch(
     : 0;
   const refinedOffset = bestOffset + Math.max(-0.5, Math.min(0.5, correction));
   const frequency = sampleRate / refinedOffset;
+  if (frequency < minFreq * 0.94 || frequency > maxFreq * 1.06) return null;
   return {
     frequency,
     midi: frequencyToMidi(frequency),
@@ -104,22 +122,57 @@ export class PianoPitchDetector {
   private lastMidi: number | null = null;
   private stableFrames = 0;
   private silentFrames = 0;
-  private inputThreshold = 0.004;
+  private baseThreshold = 0.004;
+  private sensitivity = 1;
+  private minFreq = 27.5;
+  private maxFreq = 4186;
   private lastRms = 0;
   private lastEmitAt = 0;
   private generation = 0;
+  private levelCallback: ((level: MicLevel) => void) | null = null;
+
+  setSensitivity(value: number): void {
+    this.sensitivity = Math.min(2.5, Math.max(0.4, value));
+  }
+
+  setFrequencyRange(minFreq: number, maxFreq: number): void {
+    this.minFreq = minFreq;
+    this.maxFreq = maxFreq;
+  }
+
+  onLevel(callback: ((level: MicLevel) => void) | null): void {
+    this.levelCallback = callback;
+  }
+
+  getThreshold(): number {
+    return this.effectiveThreshold();
+  }
+
+  private effectiveThreshold(): number {
+    return this.baseThreshold / this.sensitivity;
+  }
 
   private async openStream(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("Ce navigateur ne permet pas l’accès au microphone.");
     }
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-    });
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        throw new Error("Microphone refusé. Autorisez-le dans Safari, puis touchez « Jouer au piano » à nouveau.", { cause: error });
+      }
+      if (error instanceof DOMException && error.name === "NotFoundError") {
+        throw new Error("Aucun microphone détecté sur cet appareil.", { cause: error });
+      }
+      throw new Error("Le microphone n’a pas pu être activé. Vérifiez l’autorisation et utilisez une adresse HTTPS.", { cause: error });
+    }
     this.context = await unlockAudio();
     const source = this.context.createMediaStreamSource(this.stream);
     this.analyser = this.context.createAnalyser();
@@ -133,25 +186,29 @@ export class PianoPitchDetector {
     const buffer = new Float32Array(this.analyser.fftSize);
     const samples: number[] = [];
     const started = performance.now();
-    const duration = 1_200;
+    const duration = 1_000;
     while (performance.now() - started < duration) {
       this.analyser.getFloatTimeDomainData(buffer);
       samples.push(rootMeanSquare(buffer));
       onProgress?.(Math.min(1, (performance.now() - started) / duration));
-      await new Promise((resolve) => window.setTimeout(resolve, 70));
+      await new Promise((resolve) => window.setTimeout(resolve, 60));
     }
     const sorted = samples.sort((a, b) => a - b);
-    const noiseFloor = sorted[Math.floor(sorted.length * 0.8)] || 0.004;
-    this.inputThreshold = Math.min(0.035, Math.max(0.0025, noiseFloor * 2.1 + 0.001));
-    return { noiseFloor, inputThreshold: this.inputThreshold };
+    const noiseFloor = sorted[Math.floor(sorted.length * 0.8)] ?? 0.004;
+    this.baseThreshold = Math.min(0.035, Math.max(0.0025, noiseFloor * 2.1 + 0.001));
+    return { noiseFloor, inputThreshold: this.effectiveThreshold() };
   }
 
   async start(
     onPitch: (pitch: DetectedPitch) => void,
     onCalibration?: (progress: number, profile?: CalibrationProfile) => void,
-    onLevel?: (level: number) => void,
   ): Promise<CalibrationProfile> {
     const generation = ++this.generation;
+    this.lastMidi = null;
+    this.stableFrames = 0;
+    this.silentFrames = 0;
+    this.lastRms = 0;
+    this.lastEmitAt = 0;
     await this.openStream();
     if (generation !== this.generation) {
       this.stream?.getTracks().forEach((track) => track.stop());
@@ -168,11 +225,12 @@ export class PianoPitchDetector {
     const buffer = new Float32Array(analyser.fftSize);
 
     this.timer = window.setInterval(() => {
-      if (generation !== this.generation) return;
-      if (!this.analyser || !this.context) return;
+      if (generation !== this.generation || !this.analyser || !this.context) return;
+      const threshold = this.effectiveThreshold();
       this.analyser.getFloatTimeDomainData(buffer);
-      onLevel?.(Math.min(1, rootMeanSquare(buffer) / Math.max(this.inputThreshold * 5, 0.02)));
-      const detected = detectPitch(buffer, this.context.sampleRate, this.inputThreshold);
+      const frameRms = rootMeanSquare(buffer);
+      const detected = detectPitch(buffer, this.context.sampleRate, threshold, this.minFreq, this.maxFreq);
+      this.levelCallback?.({ rms: frameRms, threshold, midi: detected?.midi });
       if (!detected) {
         this.silentFrames += 1;
         if (this.silentFrames >= 2) {
@@ -181,18 +239,23 @@ export class PianoPitchDetector {
         }
         return;
       }
+
       this.silentFrames = 0;
       const now = performance.now();
-      const reattack = detected.midi === this.lastMidi && detected.rms > Math.max(this.inputThreshold * 2, this.lastRms * 1.55) && now - this.lastEmitAt > 190;
+      const comingFromSilence = this.lastMidi === null;
+      const reattack = detected.midi === this.lastMidi
+        && detected.rms > Math.max(threshold * 2, this.lastRms * 1.35)
+        && now - this.lastEmitAt > 170;
 
       if (detected.midi === this.lastMidi) this.stableFrames += 1;
       else {
         this.lastMidi = detected.midi;
         this.stableFrames = 1;
       }
-      if (this.stableFrames === 2 || reattack) {
+      if ((comingFromSilence && this.stableFrames === 1) || this.stableFrames === 2 || reattack) {
         onPitch(detected);
         this.lastEmitAt = now;
+        if (comingFromSilence) this.stableFrames = 2;
       }
       this.lastRms = detected.rms;
     }, 55);

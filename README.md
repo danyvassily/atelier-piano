@@ -21,6 +21,8 @@ Atelier Piano est une application web installable qui transforme une partition o
 - tutoriels YouTube intégrés avec passages horodatés ;
 - sauvegarde des partitions et de la progression dans IndexedDB ;
 - sauvegarde et restauration de toute la bibliothèque dans un fichier JSON ;
+- liaison d’un PDF original à une partition MusicXML ou MIDI, avec suivi de la mesure en cours sur le document ;
+- guide « compagnon Audiveris » : import du MusicXML reconnu optiquement et aide à la correction des mesures douteuses ;
 - interface iPhone, iPad et ordinateur, en thème clair ou sombre ;
 - installation comme application web depuis l’écran d’accueil.
 

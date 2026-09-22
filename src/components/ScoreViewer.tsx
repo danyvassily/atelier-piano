@@ -3,6 +3,7 @@ import { FilePdf, WarningCircle } from "@phosphor-icons/react";
 import type { NoteEvent, NoteNaming, ScoreDocument } from "../types";
 import { scoreToAbc } from "../music/abc";
 import { midiToDisplayName } from "../music/notes";
+import { estimatePdfPage } from "../music/pdfSource";
 
 interface ScoreViewerProps {
   score: ScoreDocument;
@@ -152,6 +153,104 @@ function PdfScore({ data }: { data: ArrayBuffer }) {
   return (
     <div className="pdf-wrap">
       {error && <p className="inline-error">{error}</p>}
+      <div ref={containerRef} className="pdf-pages" />
+    </div>
+  );
+}
+
+interface PdfTrackedViewProps {
+  data: ArrayBuffer;
+  fileName: string;
+  measureCount: number;
+  currentMeasure: number;
+  measuresPerPage?: number;
+  onPageCount?: (pageCount: number) => void;
+}
+
+/**
+ * PDF d'origine avec suivi de la mesure en cours (v0.3, 100 % local).
+ * Sans OMR embarquée, la correspondance mesure → page est une estimation
+ * uniforme, calibrable via `measuresPerPage`. La page estimée est mise en
+ * évidence et le défilement la suit pendant la séance.
+ */
+export function PdfTrackedView({ data, fileName, measureCount, currentMeasure, measuresPerPage, onPageCount }: PdfTrackedViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [pageCount, setPageCount] = useState(0);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const container = containerRef.current;
+    if (!container) return;
+    const pages = pageRefs.current;
+    container.replaceChildren();
+    pages.clear();
+    setError("");
+    setPageCount(0);
+
+    void Promise.all([
+      import("pdfjs-dist"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+    ])
+      .then(async ([pdfjs, worker]) => {
+        pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+        const pdf = await pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) }).promise;
+        if (cancelled) return;
+        setPageCount(pdf.numPages);
+        onPageCount?.(pdf.numPages);
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          if (cancelled) break;
+          const page = await pdf.getPage(pageNumber);
+          const viewport = page.getViewport({ scale: 1.45 });
+          const wrapper = document.createElement("div");
+          wrapper.className = "pdf-page";
+          wrapper.dataset.page = String(pageNumber);
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) continue;
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.setAttribute("aria-label", `Page ${pageNumber} de ${fileName}`);
+          wrapper.appendChild(canvas);
+          container.appendChild(wrapper);
+          pages.set(pageNumber, wrapper);
+          await page.render({ canvas, canvasContext: context, viewport }).promise;
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Impossible d’afficher ce PDF dans le navigateur.");
+      });
+
+    return () => {
+      cancelled = true;
+      container.replaceChildren();
+      pages.clear();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const estimatedPage = estimatePdfPage(currentMeasure, measureCount, pageCount, measuresPerPage);
+
+  useEffect(() => {
+    if (!pageCount) return;
+    containerRef.current?.querySelectorAll(".pdf-page.is-current-page").forEach((element) => {
+      element.classList.remove("is-current-page");
+    });
+    const target = pageRefs.current.get(estimatedPage);
+    if (!target) return;
+    target.classList.add("is-current-page");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
+  }, [estimatedPage, pageCount]);
+
+  return (
+    <div className="pdf-wrap pdf-tracked">
+      {error && <p className="inline-error">{error}</p>}
+      <div className="pdf-track-chip" aria-live="polite">
+        Mesure {Math.min(Math.max(1, currentMeasure), Math.max(1, measureCount))} / {measureCount}
+        {pageCount > 0 && <span> · page {estimatedPage} / {pageCount} (estimation)</span>}
+      </div>
       <div ref={containerRef} className="pdf-pages" />
     </div>
   );

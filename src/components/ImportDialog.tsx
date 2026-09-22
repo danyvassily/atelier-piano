@@ -5,16 +5,22 @@ import { importScore, isTranscribableMedia } from "../music/importScore";
 
 interface ImportDialogProps {
   open: boolean;
+  pdfOptions: { id: string; title: string }[];
   onClose: () => void;
   onImported: (score: ScoreDocument) => Promise<void> | void;
 }
 
-export function ImportDialog({ open, onClose, onImported }: ImportDialogProps) {
+const LINKABLE_EXTENSIONS = new Set(["xml", "musicxml", "mxl", "mid", "midi"]);
+
+export function ImportDialog({ open, pdfOptions, onClose, onImported }: ImportDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [pendingScoreFile, setPendingScoreFile] = useState<File | null>(null);
+  const [audiverisFlag, setAudiverisFlag] = useState(false);
+  const [linkPdfId, setLinkPdfId] = useState("");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [transcriptionBpm, setTranscriptionBpm] = useState(80);
   const [progress, setProgress] = useState(0);
@@ -23,6 +29,9 @@ export function ImportDialog({ open, onClose, onImported }: ImportDialogProps) {
 
   const resetAndClose = () => {
     setMediaFile(null);
+    setPendingScoreFile(null);
+    setAudiverisFlag(false);
+    setLinkPdfId("");
     setRightsConfirmed(false);
     setProgress(0);
     setError("");
@@ -38,10 +47,43 @@ export function ImportDialog({ open, onClose, onImported }: ImportDialogProps) {
       setError("");
       return;
     }
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+    // MusicXML/MIDI : options de liaison avant import (Audiveris + PDF source).
+    if (LINKABLE_EXTENSIONS.has(extension)) {
+      setPendingScoreFile(file);
+      setAudiverisFlag(false);
+      setLinkPdfId("");
+      setError("");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       const score = await importScore(file);
+      await onImported(score);
+      resetAndClose();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Impossible d’importer ce fichier.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmPendingImport = async () => {
+    if (!pendingScoreFile) return;
+    setBusy(true);
+    setError("");
+    try {
+      const score = await importScore(pendingScoreFile);
+      if (audiverisFlag) score.audiverisGenerated = true;
+      const pdfTarget = pdfOptions.find((option) => option.id === linkPdfId);
+      if (pdfTarget) {
+        score.pdfSource = {
+          pdfScoreId: pdfTarget.id,
+          pdfFileName: pdfTarget.title,
+          linkedAt: new Date().toISOString(),
+        };
+      }
       await onImported(score);
       resetAndClose();
     } catch (reason) {
@@ -81,7 +123,7 @@ export function ImportDialog({ open, onClose, onImported }: ImportDialogProps) {
           </div>
         </div>
 
-        {!mediaFile && <button
+        {!mediaFile && !pendingScoreFile && <button
           type="button"
           className={`drop-zone ${dragging ? "is-dragging" : ""}`}
           onClick={() => inputRef.current?.click()}
@@ -108,6 +150,31 @@ export function ImportDialog({ open, onClose, onImported }: ImportDialogProps) {
           accept=".xml,.musicxml,.mxl,.mid,.midi,.pdf,.ly,.wav,.mp3,.ogg,.flac,.m4a,.aac,.mp4,.mov,.webm,application/pdf,audio/*,video/*"
           onChange={(event) => void processFile(event.target.files?.[0])}
         />
+
+        {pendingScoreFile && (
+          <div className="transcription-setup">
+            <div className="transcription-file"><MusicNotes size={22} /><span><strong>{pendingScoreFile.name}</strong><small>{(pendingScoreFile.size / 1024).toFixed(0)} Ko · reste sur cet appareil</small></span></div>
+            <label className="rights-check">
+              <input type="checkbox" checked={audiverisFlag} onChange={(event) => setAudiverisFlag(event.target.checked)} />
+              <span>Ce fichier a été généré par Audiveris (affiche l’aide à la correction).</span>
+            </label>
+            {pdfOptions.length > 0 && (
+              <label className="pdf-link-field">
+                <span>PDF source à relier</span>
+                <select value={linkPdfId} onChange={(event) => setLinkPdfId(event.target.value)} aria-label="PDF source à relier">
+                  <option value="">Aucun pour l’instant</option>
+                  {pdfOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.title}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="dialog-actions">
+              <button className="secondary-button" type="button" disabled={busy} onClick={() => setPendingScoreFile(null)}>Choisir un autre fichier</button>
+              <button className="primary-button" type="button" disabled={busy} onClick={() => void confirmPendingImport()}>{busy ? "Import…" : "Importer"}</button>
+            </div>
+          </div>
+        )}
 
         {mediaFile && (
           <div className="transcription-setup">

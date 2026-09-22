@@ -1,12 +1,18 @@
 {
+  "id": "/",
   "name": "Atelier Piano",
   "short_name": "Piano",
   "description": "Des séances de piano guidées à partir de vos propres partitions.",
+  "lang": "fr",
+  "dir": "ltr",
+  "categories": ["education", "music"],
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#f3f1eb",
   "theme_color": "#151817",
-  "orientation": "any",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/piano-mark.svg",

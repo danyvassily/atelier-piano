@@ -32,6 +32,15 @@ export interface VideoLessonLink {
   measureEnd: number;
 }
 
+export interface PdfSourceLink {
+  /** Id de la partition PDF d'origine dans la bibliothèque locale. */
+  pdfScoreId: string;
+  pdfFileName: string;
+  linkedAt: string;
+  /** Calibration du suivi : nombre de mesures par page du PDF (v0.3, 100 % local). */
+  measuresPerPage?: number;
+}
+
 export interface ScoreDocument {
   id: string;
   title: string;
@@ -48,6 +57,12 @@ export interface ScoreDocument {
   sourceFileName?: string;
   transcription?: TranscriptionInfo;
   videoLessons?: VideoLessonLink[];
+  /** PDF d'origine associé (v0.3 « PDF personnel ») : le scan ou l'édition source. */
+  pdfSource?: PdfSourceLink;
+  /** Mesures signalées comme douteuses (typiquement après Audiveris), à revérifier. */
+  flaggedMeasures?: number[];
+  /** Vrai si le MusicXML a été généré par Audiveris (compagnon local). */
+  audiverisGenerated?: boolean;
 }
 
 export type LessonKind = "listen" | "right" | "left" | "together" | "performance";
