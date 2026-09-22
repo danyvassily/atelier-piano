@@ -6,3 +6,5 @@ coverage/
 
 # Tests locaux qui dépendent de fichiers hors du dépôt (chemin personnel)
 *.local.test.ts
+.vercel
+.env*
