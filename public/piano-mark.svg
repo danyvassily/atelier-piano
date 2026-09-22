@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Atelier Piano">
+  <rect width="512" height="512" rx="112" fill="#151817"/>
+  <rect x="92" y="116" width="328" height="280" rx="28" fill="#f3f1eb"/>
+  <path d="M174 116v190M256 116v190M338 116v190" stroke="#151817" stroke-width="12"/>
+  <rect x="143" y="116" width="58" height="170" rx="0 0 18 18" fill="#151817"/>
+  <rect x="283" y="116" width="58" height="170" rx="0 0 18 18" fill="#151817"/>
+  <circle cx="376" cy="356" r="28" fill="#e15c38"/>
+</svg>
