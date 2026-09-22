@@ -1,10 +1,11 @@
 # Atelier Piano
 
-Atelier Piano est une application web installable qui transforme une partition MusicXML ou MIDI en séance de piano guidée. Elle fonctionne dans Safari, Chrome et les navigateurs modernes, sans compte utilisateur et sans App Store.
+Atelier Piano est une application web installable qui transforme une partition ou un enregistrement autorisé en séance de piano guidée. Elle fonctionne dans Safari, Chrome et les navigateurs modernes, sans compte utilisateur et sans App Store.
 
 ## Ce qui fonctionne déjà
 
-- import MusicXML, XML, MXL compressé, MIDI et PDF ;
+- import MusicXML, XML, MXL compressé, MIDI, PDF et source LilyPond ;
+- transcription locale de fichiers audio et de vidéos compatibles avec Basic Pitch ;
 - affichage des partitions MusicXML avec OpenSheetMusicDisplay ;
 - lecture des PDF dans le navigateur ;
 - visualisation dédiée pour les fichiers MIDI ;
@@ -12,13 +13,18 @@ Atelier Piano est une application web installable qui transforme une partition M
 - découpage automatique par groupes de mesures ;
 - tempo réglable, métronome et lecture en boucle ;
 - clavier de piano visuel et tactile ;
-- reconnaissance d’une note isolée avec le microphone ;
-- compteur de justesse, d’erreurs et de séries ;
+- calibration du bruit ambiant et reconnaissance d’une note isolée avec le microphone ;
+- préparation des accords attendus, compteur de justesse, d’erreurs et de séries ;
+- statistiques d’erreurs par mesure ;
+- export MusicXML, MIDI et ABC, avec aperçu ABC ;
+- noms de notes en français (`Do Ré Mi`) ou en lettres (`C D E`) ;
+- tutoriels YouTube intégrés avec passages horodatés ;
 - sauvegarde des partitions et de la progression dans IndexedDB ;
+- sauvegarde et restauration de toute la bibliothèque dans un fichier JSON ;
 - interface iPhone, iPad et ordinateur, en thème clair ou sombre ;
 - installation comme application web depuis l’écran d’accueil.
 
-La partition d’exemple « Premiers pas en do » est ajoutée automatiquement au premier lancement.
+La partition d’exemple « Premiers pas en do » est ajoutée automatiquement au premier lancement. Les calculs audio sont réalisés sur l’appareil et les fichiers ne sont pas envoyés à un serveur.
 
 ## Démarrer le projet
 
@@ -69,7 +75,8 @@ src/
   audio/              Détection de hauteur, lecture et métronome
   components/         Pupitre, clavier, bibliothèque et import
   data/               Sauvegarde IndexedDB
-  music/              MusicXML, MXL, MIDI et génération des cours
+  media/              Validation des liens et horodatages YouTube
+  music/              Imports, transcription, exports et génération des cours
   App.tsx              Navigation principale
   demo.ts              Partition libre de démonstration
 public/
@@ -81,15 +88,23 @@ spec/
   spec-architecture-piano-learning-application.md  Spécification complète et portable
 ```
 
-La [spécification complète](spec/spec-architecture-piano-learning-application.md) décrit aussi les évolutions prévues : amélioration du microphone, transcription audio/vidéo locale, export ABC, flux PDF/Audiveris, sources LilyPond et tutoriels YouTube.
+La [spécification complète](spec/spec-architecture-piano-learning-application.md) est le document autonome à transmettre à un autre développeur ou à ouvrir dans un autre IDE. Elle décrit le produit, l’architecture, les formats, les modèles de données, la sécurité, les critères de test et les évolutions prévues.
 
-Le format central est MusicXML. Il contient les notes, les durées, les mesures, les portées et les mains. Le MIDI est converti dans le même modèle interne. Un PDF est affichable, mais doit être transformé en MusicXML avant la génération automatique du cours.
+Le format central est MusicXML. Il contient les notes, les durées, les mesures, les portées et les mains. MIDI et transcription audio sont convertis dans le même modèle interne. Un PDF reste affichable, mais doit être transformé en MusicXML par un outil OMR tel qu’Audiveris avant la génération automatique d’un cours fiable.
 
 ## Limites connues
 
 ### Microphone
 
-Le détecteur actuel reconnaît une note à la fois. C’est adapté aux premiers exercices et aux mains séparées, mais pas encore aux accords complets. La transcription polyphonique d’un piano acoustique nécessite un modèle spécialisé, davantage de calcul et une validation sur plusieurs pianos et pièces.
+Le détecteur en direct reconnaît une note dominante à la fois. C’est adapté aux premiers exercices et aux mains séparées, mais les accords joués au piano acoustique ne peuvent pas encore être validés note par note de façon fiable. En revanche, la transcription d’un fichier audio utilise un modèle polyphonique spécialisé.
+
+### Transcription audio et vidéo
+
+La transcription accepte les formats que le navigateur sait décoder, avec une limite de 100 Mo et 12 minutes. Elle produit un brouillon quantifié qu’il faut vérifier, surtout lorsque l’enregistrement contient d’autres instruments, de la réverbération ou du bruit. Sur Safari, tous les conteneurs vidéo ne sont pas décodables : extraire légalement la piste audio de sa propre vidéo améliore la compatibilité.
+
+### YouTube
+
+L’application intègre le lecteur officiel et permet d’associer des passages horodatés aux étapes du cours. Elle ne télécharge pas et n’extrait pas le son d’une vidéo YouTube. Pour transcrire un tutoriel, il faut importer un fichier audio ou vidéo dont l’utilisateur possède les droits ou l’autorisation.
 
 ### PDF
 
@@ -104,7 +119,7 @@ La version actuelle privilégie le microphone, car l’API Web MIDI n’est pas 
 - aucun compte ;
 - aucune publicité ;
 - aucune analyse comportementale ;
-- aucune partition envoyée vers un service externe ;
+- aucune partition ni transcription envoyée vers un service externe ;
 - bibliothèque enregistrée uniquement sur l’appareil ;
 - microphone analysé en mémoire puis immédiatement libéré.
 
@@ -113,6 +128,8 @@ Effacer les données du site dans Safari ou supprimer une partition dans la bibl
 ## Sources techniques
 
 - [OpenSheetMusicDisplay](https://opensheetmusicdisplay.org/typescript-library/) pour le rendu MusicXML ;
+- [Spotify Basic Pitch](https://github.com/spotify/basic-pitch) pour la transcription locale ;
+- [abcjs](https://www.abcjs.net/) pour l’aperçu ABC ;
 - [Audiveris](https://audiveris.github.io/audiveris/) pour la future conversion optique PDF vers MusicXML ;
 - [MDN, accès au microphone](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) ;
 - [Apple, configuration des applications web](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html) ;

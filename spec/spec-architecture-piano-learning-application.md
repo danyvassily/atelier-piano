@@ -1,7 +1,7 @@
 ---
 title: "Spécification d’architecture — Atelier Piano"
 version: "1.0.0"
-status: "proposée"
+status: "V1 implémentée — évolutions avancées documentées"
 date_created: "2026-09-22"
 last_updated: "2026-09-22"
 owner: "Dany Vassily"
@@ -58,35 +58,36 @@ La boucle principale est :
 
 ### 1.4 État actuellement implémenté
 
-La version `0.1.0` contient déjà :
+La version `1.0.0` contient :
 
 - une application React, TypeScript et Vite ;
 - une PWA avec manifeste et service worker ;
-- l’import MusicXML, XML, MXL, MIDI et PDF ;
+- l’import MusicXML, XML, MXL, MIDI, PDF et LilyPond ;
+- la transcription locale de fichiers audio et de vidéos compatibles par Basic Pitch ;
 - le rendu MusicXML avec OpenSheetMusicDisplay ;
 - l’aperçu PDF ;
 - la lecture synthétisée d’une partition ;
 - un métronome, un réglage du tempo et une boucle ;
 - la génération d’étapes écoute, main droite, main gauche, mains ensemble et interprétation ;
 - un clavier tactile ;
-- la reconnaissance monophonique par microphone ;
+- le calibrage automatique du microphone et la reconnaissance monophonique en direct ;
+- la préparation des accords attendus dans les exercices ;
 - les compteurs de notes correctes, d’erreurs et de séries ;
-- la sauvegarde locale dans IndexedDB.
+- la sauvegarde locale dans IndexedDB ;
+- l’export MusicXML, MIDI et ABC ;
+- l’affichage des notes en notation française ou internationale ;
+- l’ajout de tutoriels YouTube officiels avec passages horodatés ;
+- la sauvegarde et la restauration complète de la bibliothèque au format JSON.
 
 ### 1.5 Périmètre cible
 
-Le périmètre cible ajoute progressivement :
+Les évolutions avancées restant proposées sont :
 
-- le calibrage du microphone et une analyse temps réel plus stable ;
-- la reconnaissance assistée d’accords attendus ;
-- l’analyse de fichiers audio ou vidéo appartenant à l’utilisateur ;
-- la conversion audio vers événements MIDI, puis vers une partition éditable ;
-- l’export ABC et l’affichage des notes en lettres `A B C D E F G` ou en noms français ;
 - un flux PDF vers MusicXML avec Audiveris ;
 - le support assisté de sources LilyPond `.ly` via un compagnon local ;
-- un lecteur YouTube intégré avec passages horodatés, sans téléchargement ni extraction du son YouTube ;
-- des statistiques par mesure et une file de passages faibles à retravailler ;
-- l’export et la restauration de la bibliothèque personnelle.
+- la reconnaissance polyphonique fiable au microphone sur un piano acoustique ;
+- un éditeur graphique complet pour corriger les brouillons de transcription ;
+- une file intelligente de passages faibles à retravailler.
 
 ### 1.6 Hors périmètre initial
 
@@ -952,4 +953,3 @@ Aucune clé API YouTube n’est nécessaire pour un simple lecteur IFrame contr�
 - promettre une partition exacte issue de n’importe quel tutoriel ;
 - publier ou partager automatiquement les œuvres importées ;
 - masquer l’incertitude des résultats automatiques.
-
