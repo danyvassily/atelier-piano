@@ -1,4 +1,4 @@
-const CACHE = "atelier-piano-v2";
+const CACHE = "atelier-piano-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/piano-mark.svg"];
 
 self.addEventListener("install", (event) => {
@@ -17,6 +17,22 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // Les navigations (ouverture depuis l'écran d'accueil, hors-ligne)
+  // retombent toujours sur le shell mis en cache.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then((cache) => cache.put("/", copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match("/")),
+    );
+    return;
+  }
   event.respondWith(
     fetch(event.request)
       .then((response) => {

@@ -1850,3 +1850,212 @@ input:focus-visible {
     backdrop-filter: none;
   }
 }
+
+.loop-editor {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px 15px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.loop-editor label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.loop-editor input {
+  width: 64px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.loop-hint {
+  margin-left: auto;
+  font-size: 0.68rem;
+}
+
+.mic-panel {
+  margin-top: 14px;
+  padding: 13px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.mic-meter-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  color: var(--accent-strong);
+}
+
+.mic-meter-row output {
+  min-width: 92px;
+  text-align: right;
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 740;
+  font-variant-numeric: tabular-nums;
+}
+
+.mic-meter {
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.mic-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--success), var(--accent));
+  transition: width 90ms linear;
+}
+
+.mic-meter-state {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 33%;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+  opacity: 0.55;
+}
+
+.mic-meter-state.hears {
+  background: var(--success);
+  opacity: 1;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.mic-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px 16px;
+  margin-top: 11px;
+}
+
+.mic-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.mic-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.mic-controls output {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.mic-controls select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.74rem;
+}
+
+.mic-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.measure-report {
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.measure-report > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 13px;
+  font-size: 0.76rem;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.measure-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 7px;
+  padding: 0 13px 13px;
+}
+
+.measure-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.measure-row span:first-child {
+  font-weight: 760;
+}
+
+.measure-row.is-clean {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--line));
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.measure-row.has-errors {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.practice-button.is-pause {
+  background: var(--surface-raised);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+@media (max-width: 680px) {
+  .mic-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .mic-meter-row output {
+    min-width: 76px;
+  }
+
+  .transport-bar {
+    grid-template-columns: 1fr 1fr auto;
+  }
+}
