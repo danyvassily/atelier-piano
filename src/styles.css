@@ -2059,3 +2059,360 @@ input:focus-visible {
     grid-template-columns: 1fr 1fr auto;
   }
 }
+
+.source-pdf-panel {
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.source-pdf-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  color: var(--accent-strong);
+}
+
+.source-pdf-heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.source-pdf-heading strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.source-pdf-heading span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.source-pdf-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.source-pdf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.source-pdf-actions select {
+  min-height: 42px;
+  max-width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.secondary-button.danger-ghost {
+  color: var(--danger);
+}
+
+.source-pdf-linked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 11px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--line));
+  border-radius: var(--radius-control);
+  background: var(--success-soft);
+}
+
+.source-pdf-linked div {
+  display: grid;
+  gap: 2px;
+}
+
+.source-pdf-linked strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.source-pdf-linked span {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.source-pdf-calibration {
+  display: grid;
+  grid-template-columns: auto 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 11px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.source-pdf-calibration input {
+  min-height: 38px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.source-pdf-calibration small {
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.source-pdf-missing {
+  display: grid;
+  gap: 4px;
+  margin-top: 11px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+  border-radius: var(--radius-control);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.74rem;
+}
+
+.source-pdf-missing span {
+  color: color-mix(in srgb, var(--danger) 74%, var(--ink));
+  font-size: 0.7rem;
+}
+
+.pdf-tracked {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.pdf-tracked .pdf-pages {
+  display: grid;
+  gap: 16px;
+  justify-content: center;
+  max-height: 420px;
+  overflow: auto;
+  padding: 0 4px 4px;
+}
+
+.pdf-track-chip {
+  position: sticky;
+  top: 9px;
+  z-index: 3;
+  float: right;
+  margin: 9px 10px 0 0;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: #191c1a;
+  color: #f7f7f3;
+  font-size: 0.68rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 5px 18px rgb(0 0 0 / 0.16);
+}
+
+.pdf-page {
+  border-radius: 6px;
+}
+
+.pdf-page canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: white;
+  box-shadow: 0 9px 28px rgb(0 0 0 / 0.25);
+}
+
+.pdf-page.is-current-page canvas {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.audiveris-guide {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.audiveris-guide > summary {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  color: var(--accent-strong);
+  cursor: pointer;
+  list-style: none;
+}
+
+.audiveris-guide > summary::-webkit-details-marker {
+  display: none;
+}
+
+.audiveris-guide > summary span {
+  display: grid;
+  gap: 2px;
+}
+
+.audiveris-guide > summary strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.audiveris-guide > summary small {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.audiveris-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0 14px 6px 32px;
+  counter-reset: audiveris;
+}
+
+.audiveris-steps li {
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.audiveris-steps li strong {
+  color: var(--ink);
+}
+
+.audiveris-steps li .secondary-button {
+  justify-self: start;
+  margin-top: 6px;
+}
+
+.audiveris-check {
+  margin: 8px 14px 0;
+}
+
+.audiveris-reminder {
+  margin: 10px 14px 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.linked-exercises {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--line));
+  border-radius: var(--radius-panel);
+  background: var(--success-soft);
+}
+
+.linked-exercises > strong {
+  color: var(--success);
+  font-size: 0.78rem;
+}
+
+.linked-exercise-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 0.74rem;
+}
+
+.measure-row.is-flagged {
+  border-color: color-mix(in srgb, #b98a1d 55%, var(--line));
+  border-style: dashed;
+}
+
+.flag-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.flag-button:hover {
+  background: var(--surface-soft);
+}
+
+.flag-button.is-on {
+  border-color: color-mix(in srgb, #b98a1d 55%, var(--line));
+  background: color-mix(in srgb, #b98a1d 16%, var(--surface-raised));
+  color: #8a6410;
+}
+
+:root[data-theme="dark"] .flag-button.is-on {
+  color: #e0b34e;
+}
+
+.pdf-link-field {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 690;
+}
+
+.pdf-link-field select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+@media (max-width: 680px) {
+  .source-pdf-calibration {
+    grid-template-columns: auto 64px;
+  }
+
+  .source-pdf-calibration small {
+    grid-column: 1 / -1;
+  }
+
+  .linked-exercise-row {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+}

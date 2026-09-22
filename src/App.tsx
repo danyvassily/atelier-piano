@@ -76,6 +76,11 @@ export default function App() {
     setSelectedId(score.id);
   };
 
+  const addScoreQuiet = async (score: ScoreDocument) => {
+    await scoreStorage.put(score);
+    setScores((current) => [score, ...current]);
+  };
+
   const updateScore = async (score: ScoreDocument) => {
     await scoreStorage.put(score);
     setScores((current) => current.map((item) => item.id === score.id ? score : item));
@@ -166,7 +171,15 @@ export default function App() {
           </main>
         )}
         {!loading && !loadError && selectedScore && (
-          <PracticeStudio key={selectedScore.id} score={selectedScore} onImport={() => setImportOpen(true)} onUpdateScore={updateScore} />
+          <PracticeStudio
+            key={selectedScore.id}
+            score={selectedScore}
+            allScores={scores}
+            onImport={() => setImportOpen(true)}
+            onUpdateScore={updateScore}
+            onAddScoreQuiet={addScoreQuiet}
+            onSelectScore={setSelectedId}
+          />
         )}
         {!loading && !loadError && !selectedScore && (
           <main className="empty-state">
@@ -179,7 +192,12 @@ export default function App() {
         )}
       </div>
 
-      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImported={addScore} />
+      <ImportDialog
+        open={importOpen}
+        pdfOptions={scores.filter((score) => score.sourceType === "pdf" && score.binaryData).map((score) => ({ id: score.id, title: score.title }))}
+        onClose={() => setImportOpen(false)}
+        onImported={addScore}
+      />
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowCounterClockwise,
+  BookOpen,
   CheckCircle,
   DownloadSimple,
   Ear,
+  Flag,
   Gauge,
   Info,
   Metronome as MetronomeIcon,
@@ -18,6 +20,7 @@ import {
 import type { LessonStage, NoteNaming, PracticeStats, ScoreDocument } from "../types";
 import { createLessonPlan, groupNotesForPractice, notesForStage } from "../music/lessons";
 import { PITCH_RANGES, PianoPitchDetector, type CalibrationProfile, type MicLevel, type PitchRangeId } from "../audio/pitchDetector";
+import { findLinkedPdf, findScoresLinkedToPdf, toggleFlaggedMeasure } from "../music/pdfSource";
 import { ScorePlayer } from "../audio/scorePlayer";
 import { Metronome } from "../audio/metronome";
 import { scoreStorage } from "../data/storage";
@@ -25,13 +28,18 @@ import { midiToDisplayName } from "../music/notes";
 import { ExportDialog } from "./ExportDialog";
 import { LessonRail } from "./LessonRail";
 import { PianoKeyboard } from "./PianoKeyboard";
-import { ScoreViewer } from "./ScoreViewer";
+import { ScoreViewer, PdfTrackedView } from "./ScoreViewer";
+import { SourcePdfPanel } from "./SourcePdfPanel";
+import { AudiverisGuide } from "./AudiverisGuide";
 import { YouTubeLesson } from "./YouTubeLesson";
 
 interface PracticeStudioProps {
   score: ScoreDocument;
+  allScores: ScoreDocument[];
   onImport: () => void;
   onUpdateScore: (score: ScoreDocument) => Promise<void> | void;
+  onAddScoreQuiet: (score: ScoreDocument) => Promise<void> | void;
+  onSelectScore: (id: string) => void;
 }
 
 type SessionMode = "idle" | "listening" | "calibrating" | "practicing" | "paused" | "complete";
@@ -60,7 +68,7 @@ function downloadText(text: string, fileName: string, type = "text/plain;charset
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudioProps) {
+export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAddScoreQuiet, onSelectScore }: PracticeStudioProps) {
   const stages = useMemo(() => createLessonPlan(score), [score]);
   const [stage, setStage] = useState<LessonStage | null>(stages[0] || null);
   const [completedStageIds, setCompletedStageIds] = useState<string[]>([]);
@@ -83,6 +91,8 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
   const [pitchRange, setPitchRange] = useState<PitchRangeId>(loadPitchRange);
   const [exportOpen, setExportOpen] = useState(false);
   const [pausedFrom, setPausedFrom] = useState<"listening" | "practicing" | null>(null);
+  const [pdfTab, setPdfTab] = useState(false);
+  const [pdfPageCount, setPdfPageCount] = useState(0);
   const [naming, setNaming] = useState<NoteNaming>(() => localStorage.getItem("atelier-note-naming") === "letters" ? "letters" : "french");
 
   const scorePlayer = useRef(new ScorePlayer());
@@ -97,6 +107,13 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
   const pausedGroupsRef = useRef(0);
   const sessionGenerationRef = useRef(0);
 
+  // v0.3 « PDF personnel » : PDF d'origine lié + exercices liés (100 % local).
+  const linkedPdf = useMemo(() => findLinkedPdf(allScores, score), [allScores, score]);
+  const linkedExercises = useMemo(
+    () => (score.sourceType === "pdf" ? findScoresLinkedToPdf(allScores, score.id) : []),
+    [allScores, score],
+  );
+  const canShowPdfTab = Boolean(linkedPdf?.binaryData);
   const stageNotes = useMemo(() => (stage ? notesForStage(score, stage) : []), [score, stage]);
   // Boucle éditable : quand elle est active, le cours ne porte que sur
   // l'intervalle [loopStart, loopEnd] au lieu du découpage automatique.
@@ -394,6 +411,10 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
     });
   }, [stage]);
 
+  const toggleMeasureFlag = (measure: number) => {
+    void onUpdateScore({ ...score, flaggedMeasures: toggleFlaggedMeasure(score.flaggedMeasures, measure) });
+  };
+
   const selectStage = (nextStage: LessonStage) => {
     stopSession();
     setStage(nextStage);
@@ -415,7 +436,19 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
     return (
       <main className="pdf-workspace">
         <header className="studio-header"><div><p>Partition PDF</p><h1>{score.title}</h1></div><button className="primary-button" type="button" onClick={onImport}>Importer le MusicXML</button></header>
-        <div className="pdf-guidance"><Info size={22} weight="fill" /><div><strong>Le PDF est prêt à être consulté.</strong><p>Pour créer les exercices et reconnaître les notes, utilisez de préférence la source MusicXML ou LilyPond. Sinon, convertissez le PDF avec Audiveris puis corrigez le résultat.</p></div></div>
+        <div className="pdf-guidance"><Info size={22} weight="fill" /><div><strong>Le PDF est prêt à être consulté.</strong><p>Pour créer les exercices et reconnaître les notes, importez le MusicXML correspondant (par exemple la sortie d’Audiveris) puis reliez-le à ce PDF depuis sa fiche : le document s’affichera pendant la séance, mesure par mesure.</p></div></div>
+        {linkedExercises.length > 0 && (
+          <section className="linked-exercises" aria-label="Exercices liés à ce PDF">
+            <strong>{linkedExercises.length} exercice{linkedExercises.length > 1 ? "s" : ""} lié{linkedExercises.length > 1 ? "s" : ""}</strong>
+            {linkedExercises.map((exercise) => (
+              <div key={exercise.id} className="linked-exercise-row">
+                <span>{exercise.title} · {exercise.measureCount} mesures{exercise.audiverisGenerated ? " · Audiveris" : ""}</span>
+                <button className="secondary-button" type="button" onClick={() => onSelectScore(exercise.id)}>Pratiquer</button>
+              </div>
+            ))}
+          </section>
+        )}
+        <AudiverisGuide score={score} onImport={onImport} onUpdateScore={onUpdateScore} />
         <ScoreViewer score={score} notes={[]} activeIndex={0} />
       </main>
     );
@@ -466,13 +499,26 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
             <details className="measure-report" open={mode === "paused"}>
               <summary>Bilan par mesure · {measureReport.filter((row) => row.done >= row.total).length}/{measureReport.length} mesures propres</summary>
               <div className="measure-report-grid" role="table" aria-label="Bilan par mesure">
-                {measureReport.map((row) => (
-                  <div key={row.measure} role="row" className={`measure-row ${row.errors > 0 ? "has-errors" : row.done >= row.total ? "is-clean" : ""}`}>
-                    <span role="cell">Mes. {row.measure}</span>
-                    <span role="cell">{row.done}/{row.total} notes</span>
-                    <span role="cell">{row.errors ? `${row.errors} err.` : "—"}</span>
-                  </div>
-                ))}
+                {measureReport.map((row) => {
+                  const flagged = score.flaggedMeasures?.includes(row.measure) === true;
+                  return (
+                    <div key={row.measure} role="row" className={`measure-row ${row.errors > 0 ? "has-errors" : row.done >= row.total ? "is-clean" : ""} ${flagged ? "is-flagged" : ""}`}>
+                      <span role="cell">Mes. {row.measure}</span>
+                      <span role="cell">{row.done}/{row.total} notes</span>
+                      <span role="cell">{row.errors ? `${row.errors} err.` : "—"}</span>
+                      <button
+                        type="button"
+                        role="cell"
+                        className={`flag-button ${flagged ? "is-on" : ""}`}
+                        aria-pressed={flagged}
+                        title={flagged ? "Mesure vérifiée : retirer le signalement" : "Signaler cette mesure à vérifier (ex. après Audiveris)"}
+                        onClick={() => toggleMeasureFlag(row.measure)}
+                      >
+                        <Flag size={14} /> {flagged ? "À vérifier" : "Signaler"}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </details>
           )}
@@ -484,6 +530,12 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
                 <button type="button" className={naming === "letters" ? "is-on" : ""} onClick={() => setNaming((value) => value === "french" ? "letters" : "french")} aria-label="Changer le nom des notes"><Translate size={18} /> {naming === "french" ? "Do Ré Mi" : "C D E"}</button>
                 <button type="button" className={metronomeOn ? "is-on" : ""} onClick={() => setMetronomeOn((value) => !value)} aria-pressed={metronomeOn}><MetronomeIcon size={18} /> Métronome</button>
                 <button type="button" className={loopOn ? "is-on" : ""} onClick={toggleLoop} aria-pressed={loopOn}><Repeat size={18} /> Boucle</button>
+                {canShowPdfTab && (
+                  <button type="button" className={!pdfTab ? "is-on" : ""} onClick={() => setPdfTab(false)} aria-pressed={!pdfTab}><BookOpen size={18} /> Partition</button>
+                )}
+                {canShowPdfTab && (
+                  <button type="button" className={pdfTab ? "is-on" : ""} onClick={() => setPdfTab(true)} aria-pressed={pdfTab}><BookOpen size={18} /> PDF original</button>
+                )}
               </div>
             </div>
             {loopOn && stage && (
@@ -494,8 +546,31 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
                 <span className="loop-hint">{loopedNotes.length} notes dans la boucle</span>
               </div>
             )}
-            <div className="score-viewport"><div className="measure-chip">Mesure {activeNote?.measure || stage.measureStart}</div><ScoreViewer score={score} notes={loopedNotes} activeIndex={activeIndex} /></div>
+            <div className="score-viewport"><div className="measure-chip">Mesure {activeNote?.measure || stage.measureStart}</div>
+              {pdfTab && linkedPdf?.binaryData && score.pdfSource ? (
+                <PdfTrackedView
+                  data={linkedPdf.binaryData}
+                  fileName={score.pdfSource.pdfFileName}
+                  measureCount={score.measureCount}
+                  currentMeasure={activeNote?.measure || stage.measureStart}
+                  measuresPerPage={score.pdfSource.measuresPerPage}
+                  onPageCount={setPdfPageCount}
+                />
+              ) : (
+                <ScoreViewer score={score} notes={loopedNotes} activeIndex={activeIndex} />
+              )}
+            </div>
           </div>
+
+          <SourcePdfPanel
+            score={score}
+            allScores={allScores}
+            pdfPageCount={pdfPageCount}
+            onShowPdf={() => setPdfTab(true)}
+            onUpdateScore={onUpdateScore}
+            onAddScoreQuiet={onAddScoreQuiet}
+          />
+          <AudiverisGuide score={score} onImport={onImport} onUpdateScore={onUpdateScore} />
 
           {micActive && (
             <section className="mic-panel" aria-live="polite" aria-label="État du microphone">
