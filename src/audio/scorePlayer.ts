@@ -1,5 +1,6 @@
 import type { NoteEvent } from "../types";
 import { midiToFrequency } from "../music/notes";
+import { unlockAudio } from "./audioContext";
 
 export class ScorePlayer {
   private context: AudioContext | null = null;
@@ -9,8 +10,7 @@ export class ScorePlayer {
   async play(notes: NoteEvent[], bpm: number, onProgress: (noteIndex: number) => void, onEnd: () => void): Promise<void> {
     this.stop();
     if (!notes.length) return;
-    this.context = new AudioContext({ latencyHint: "playback" });
-    await this.context.resume();
+    this.context = await unlockAudio();
     const firstBeat = Math.min(...notes.map((note) => note.onsetBeats));
     const secondsPerBeat = 60 / bpm;
     const startTime = this.context.currentTime + 0.08;
@@ -49,7 +49,6 @@ export class ScorePlayer {
     });
     this.timers = [];
     this.oscillators = [];
-    if (this.context) void this.context.close();
     this.context = null;
   }
 }

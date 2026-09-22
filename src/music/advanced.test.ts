@@ -4,7 +4,7 @@ import { DEMO_MUSIC_XML } from "../demo";
 import { parseYouTubeUrl } from "../media/youtube";
 import { scoreToAbc } from "./abc";
 import { scoreToMusicXml } from "./exportFormats";
-import { createLessonPlan, groupNotesForPractice, notesForStage } from "./lessons";
+import { createLessonPlan, createStepByStepTargets, groupNotesForPractice, notesForStage } from "./lessons";
 import { parseLilyPond } from "./lilypond";
 import { parseMusicXml } from "./musicXml";
 
@@ -15,6 +15,14 @@ describe("formats de sortie", () => {
     expect(abc).toContain("V:LH clef=bass");
     expect(abc).toContain("[V:RH]");
     expect(abc).toContain("K:C");
+  });
+
+  it("génère une fenêtre de portée avec la note active marquée", () => {
+    const score = parseMusicXml(DEMO_MUSIC_XML);
+    const note = score.notes.find((item) => item.measure === 3)!;
+    const abc = scoreToAbc(score, { measureStart: 3, measureEnd: 4, activeNoteIds: [note.id] });
+    expect(abc).toContain("!accent!");
+    expect(abc.match(/\|/g)?.length).toBe(4);
   });
 
   it("produit un MusicXML relisible pour une partition dérivée", () => {
@@ -43,6 +51,14 @@ describe("sources et exercices avancés", () => {
     const stage = createLessonPlan(score)[0];
     const groups = groupNotesForPractice(notesForStage(score, stage));
     expect(groups.some((group) => group.midis.length > 1)).toBe(true);
+  });
+
+  it("décompose les accords en cibles successives pour le microphone", () => {
+    const score = parseMusicXml(DEMO_MUSIC_XML);
+    const notes = notesForStage(score, createLessonPlan(score)[0]);
+    const targets = createStepByStepTargets(notes);
+    expect(targets.length).toBeGreaterThan(groupNotesForPractice(notes).length);
+    expect(targets.every((target) => target.midis.length === 1)).toBe(true);
   });
 
   it("lit les URL YouTube usuelles et leur horodatage", () => {

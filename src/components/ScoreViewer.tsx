@@ -1,73 +1,111 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FilePdf, WarningCircle } from "@phosphor-icons/react";
-import type { NoteEvent, ScoreDocument } from "../types";
+import type { NoteEvent, NoteNaming, ScoreDocument } from "../types";
+import { scoreToAbc } from "../music/abc";
+import { midiToDisplayName } from "../music/notes";
 
 interface ScoreViewerProps {
   score: ScoreDocument;
   notes: NoteEvent[];
   activeIndex: number;
+  activeNoteIds?: string[];
+  naming?: NoteNaming;
 }
 
-function MusicXmlScore({ xml }: { xml: string }) {
+interface NoteGroup {
+  key: string;
+  notes: NoteEvent[];
+}
+
+function groupVisibleNotes(notes: NoteEvent[]): NoteGroup[] {
+  const groups = new Map<string, NoteEvent[]>();
+  notes.forEach((note) => {
+    const key = note.onsetBeats.toFixed(3);
+    const group = groups.get(key) || [];
+    group.push(note);
+    groups.set(key, group);
+  });
+  return [...groups.entries()]
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([key, group]) => ({ key, notes: group.sort((a, b) => a.midi - b.midi) }));
+}
+
+function GuidedNotation({
+  score,
+  notes,
+  activeIndex,
+  activeNoteIds = [],
+  naming = "french",
+}: ScoreViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
+  const groups = useMemo(() => groupVisibleNotes(notes), [notes]);
+  const activeIds = useMemo(() => new Set(activeNoteIds), [activeNoteIds]);
+  const foundGroupIndex = groups.findIndex((group) => group.notes.some((note) => activeIds.has(note.id)));
+  const activeGroupIndex = foundGroupIndex >= 0 ? foundGroupIndex : Math.min(activeIndex, Math.max(0, groups.length - 1));
+  const activeNote = groups[activeGroupIndex]?.notes[0] || notes[0];
+  const firstMeasure = notes.length ? Math.min(...notes.map((note) => note.measure)) : 1;
+  const lastMeasure = notes.length ? Math.max(...notes.map((note) => note.measure)) : score.measureCount;
+  const currentMeasure = activeNote?.measure || firstMeasure;
+  const measureStart = Math.max(firstMeasure, currentMeasure - 1);
+  const measureEnd = Math.min(lastMeasure, measureStart + 3);
+  const abc = useMemo(
+    () => scoreToAbc({ ...score, notes }, { measureStart, measureEnd, activeNoteIds }),
+    [activeNoteIds, measureEnd, measureStart, notes, score],
+  );
 
   useEffect(() => {
-    let cancelled = false;
     const container = containerRef.current;
     if (!container) return;
+    let cancelled = false;
     container.replaceChildren();
     setError("");
-
-    void import("opensheetmusicdisplay")
-      .then(async ({ OpenSheetMusicDisplay }) => {
+    void import("abcjs")
+      .then(({ default: ABCJS }) => {
         if (cancelled) return;
-        const osmd = new OpenSheetMusicDisplay(container, {
-          autoResize: true,
-          backend: "svg",
-          drawingParameters: "compacttight",
-          drawTitle: false,
+        ABCJS.renderAbc(container, abc, {
+          responsive: "resize",
+          staffwidth: 860,
+          add_classes: true,
+          paddingleft: 8,
+          paddingright: 8,
+          paddingtop: 0,
+          paddingbottom: 2,
         });
-        await osmd.load(xml);
-        if (!cancelled) await osmd.render();
       })
-      .catch(() => setError("La notation complète ne peut pas être affichée, mais les notes restent disponibles pour le cours."));
-
+      .catch(() => setError("La portée n’a pas pu être affichée."));
     return () => {
       cancelled = true;
       container.replaceChildren();
     };
-  }, [xml]);
+  }, [abc]);
+
+  useEffect(() => {
+    const active = stripRef.current?.querySelector<HTMLElement>(".note-flow-item.is-active");
+    active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activeGroupIndex]);
+
+  if (!notes.length) {
+    return <div className="empty-score"><FilePdf size={32} /><p>Aucune note dans ce passage.</p></div>;
+  }
 
   return (
-    <div className="notation-wrap">
+    <div className="guided-notation">
       {error && <p className="score-warning"><WarningCircle size={18} /> {error}</p>}
-      <div ref={containerRef} className="osmd-container" aria-label="Partition musicale" />
-    </div>
-  );
-}
-
-function MidiRoll({ notes, activeIndex }: { notes: NoteEvent[]; activeIndex: number }) {
-  const maxBeat = Math.max(1, ...notes.map((note) => note.onsetBeats + note.durationBeats));
-  const minMidi = Math.min(...notes.map((note) => note.midi));
-  const maxMidi = Math.max(...notes.map((note) => note.midi));
-  const pitchSpan = Math.max(12, maxMidi - minMidi + 1);
-
-  return (
-    <div className="midi-roll" aria-label="Visualisation MIDI">
-      <div className="midi-grid" />
-      {notes.map((note, index) => (
-        <span
-          key={note.id}
-          className={`midi-note ${index === activeIndex ? "is-active" : ""} ${note.hand === "left" ? "is-left" : ""}`}
-          style={{
-            left: `${(note.onsetBeats / maxBeat) * 100}%`,
-            width: `${Math.max(0.65, (note.durationBeats / maxBeat) * 100)}%`,
-            bottom: `${((note.midi - minMidi) / pitchSpan) * 84 + 8}%`,
-          }}
-          title={`${note.name}, mesure ${note.measure}`}
-        />
-      ))}
+      <div className="notation-window-label">Portée guidée · mesures {measureStart}–{measureEnd}</div>
+      <div ref={containerRef} className="abc-practice-score" aria-label="Partition en notation musicale" />
+      <div ref={stripRef} className="note-flow" aria-label="Défilement des noms de notes">
+        {groups.map((group, index) => {
+          const isActive = index === activeGroupIndex;
+          return (
+            <span key={group.key} className={`note-flow-item ${isActive ? "is-active" : ""}`} aria-current={isActive ? "true" : undefined}>
+              <small>{group.notes[0].measure}</small>
+              <strong>{group.notes.map((note) => midiToDisplayName(note.midi, naming)).join(" + ")}</strong>
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -119,14 +157,10 @@ function PdfScore({ data }: { data: ArrayBuffer }) {
   );
 }
 
-export function ScoreViewer({ score, notes, activeIndex }: ScoreViewerProps) {
-  if (score.sourceType === "musicxml" && score.rawText) return <MusicXmlScore xml={score.rawText} />;
-  if (score.sourceType === "midi" || score.sourceType === "transcription") return <MidiRoll notes={notes} activeIndex={activeIndex} />;
-  if (score.sourceType === "pdf" && score.binaryData) return <PdfScore data={score.binaryData} />;
-  return (
-    <div className="empty-score">
-      <FilePdf size={32} />
-      <p>Aucun aperçu disponible.</p>
-    </div>
-  );
+export function ScoreViewer(props: ScoreViewerProps) {
+  if (props.score.sourceType === "pdf" && props.score.binaryData) return <PdfScore data={props.score.binaryData} />;
+  if (props.score.sourceType === "musicxml" || props.score.sourceType === "midi" || props.score.sourceType === "transcription") {
+    return <GuidedNotation {...props} />;
+  }
+  return <div className="empty-score"><FilePdf size={32} /><p>Aucun aperçu disponible.</p></div>;
 }

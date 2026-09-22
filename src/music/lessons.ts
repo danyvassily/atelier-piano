@@ -109,3 +109,19 @@ export function groupNotesForPractice(notes: ReturnType<typeof notesForStage>): 
   });
   return [...groups.values()].sort((a, b) => a.onsetBeats - b.onsetBeats);
 }
+
+/**
+ * Le microphone d’un navigateur renvoie une hauteur dominante. Pour apprendre
+ * sans rester bloqué sur un accord, chaque hauteur simultanée devient donc une
+ * étape successive, de la plus grave à la plus aiguë.
+ */
+export function createStepByStepTargets(notes: ReturnType<typeof notesForStage>): PracticeGroup[] {
+  const noteById = new Map(notes.map((note) => [note.id, note]));
+  return groupNotesForPractice(notes).flatMap((group) => group.midis.map((midi) => ({
+    id: `${group.id}-${midi}`,
+    onsetBeats: group.onsetBeats,
+    measure: group.measure,
+    midis: [midi],
+    noteIds: group.noteIds.filter((id) => noteById.get(id)?.midi === midi),
+  })));
+}

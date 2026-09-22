@@ -1,4 +1,4 @@
-const CACHE = "atelier-piano-v2";
+const CACHE = "atelier-piano-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/piano-mark.svg"];
 
 self.addEventListener("install", (event) => {

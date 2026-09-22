@@ -16,10 +16,11 @@ import {
   Translate,
 } from "@phosphor-icons/react";
 import type { LessonStage, NoteNaming, PracticeStats, ScoreDocument } from "../types";
-import { createLessonPlan, groupNotesForPractice, notesForStage } from "../music/lessons";
-import { PianoPitchDetector, type CalibrationProfile } from "../audio/pitchDetector";
+import { createLessonPlan, createStepByStepTargets, groupNotesForPractice, notesForStage } from "../music/lessons";
+import { PianoPitchDetector } from "../audio/pitchDetector";
 import { ScorePlayer } from "../audio/scorePlayer";
 import { Metronome } from "../audio/metronome";
+import { unlockAudio } from "../audio/audioContext";
 import { scoreStorage } from "../data/storage";
 import { ExportDialog } from "./ExportDialog";
 import { LessonRail } from "./LessonRail";
@@ -33,7 +34,7 @@ interface PracticeStudioProps {
   onUpdateScore: (score: ScoreDocument) => Promise<void> | void;
 }
 
-type SessionMode = "idle" | "listening" | "calibrating" | "practicing" | "complete";
+type SessionMode = "idle" | "listening" | "requesting" | "calibrating" | "practicing" | "complete";
 type NoteStatus = "idle" | "correct" | "wrong";
 
 function freshStats(): PracticeStats {
@@ -62,9 +63,9 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
   const [metronomeOn, setMetronomeOn] = useState(false);
   const [loopOn, setLoopOn] = useState(false);
   const [microphoneError, setMicrophoneError] = useState("");
-  const [matchedMidis, setMatchedMidis] = useState<number[]>([]);
+  const [playbackError, setPlaybackError] = useState("");
   const [calibrationProgress, setCalibrationProgress] = useState(0);
-  const [calibrationProfile, setCalibrationProfile] = useState<CalibrationProfile>();
+  const [microphoneLevel, setMicrophoneLevel] = useState(0);
   const [exportOpen, setExportOpen] = useState(false);
   const [naming, setNaming] = useState<NoteNaming>(() => localStorage.getItem("atelier-note-naming") === "letters" ? "letters" : "french");
 
@@ -72,7 +73,6 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
   const pitchDetector = useRef(new PianoPitchDetector());
   const metronome = useRef(new Metronome());
   const activeIndexRef = useRef(0);
-  const matchedMidisRef = useRef<number[]>([]);
   const statsRef = useRef(stats);
   const modeRef = useRef<SessionMode>("idle");
   const loopRef = useRef(false);
@@ -80,11 +80,16 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
 
   const stageNotes = useMemo(() => (stage ? notesForStage(score, stage) : []), [score, stage]);
   const practiceGroups = useMemo(() => groupNotesForPractice(stageNotes), [stageNotes]);
+  const practiceTargets = useMemo(() => createStepByStepTargets(stageNotes), [stageNotes]);
+  const passageContainsChords = practiceGroups.some((group) => group.midis.length > 1);
   const effectiveBpm = Math.max(30, Math.round(score.bpm * tempoFactor));
-  const expectedGroup = practiceGroups[activeIndex];
+  const expectedGroup = practiceTargets[activeIndex];
   const activeNote = mode === "listening"
     ? stageNotes[activeIndex]
     : stageNotes.find((note) => expectedGroup?.noteIds.includes(note.id));
+  const activeNoteIds = mode === "listening"
+    ? (stageNotes[activeIndex] ? [stageNotes[activeIndex].id] : [])
+    : (expectedGroup?.noteIds || []);
   const accuracy = stats.correct + stats.errors > 0
     ? Math.round((stats.correct / (stats.correct + stats.errors)) * 100)
     : 0;
@@ -156,15 +161,11 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
 
   const handlePlayedNote = useCallback((midi: number) => {
     if (modeRef.current !== "practicing") return;
-    const target = practiceGroups[activeIndexRef.current];
+    const target = practiceTargets[activeIndexRef.current];
     if (!target) return;
     setDetectedMidi(midi);
 
     if (target.midis.includes(midi)) {
-      if (matchedMidisRef.current.includes(midi)) return;
-      const matched = [...matchedMidisRef.current, midi];
-      matchedMidisRef.current = matched;
-      setMatchedMidis(matched);
       setNoteStatus("correct");
       setStats((current) => ({
         ...current,
@@ -173,15 +174,11 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
         bestStreak: Math.max(current.bestStreak, current.streak + 1),
         completedNoteIds: [...current.completedNoteIds, ...target.noteIds.filter((id) => !current.completedNoteIds.includes(id))],
       }));
-      if (matched.length >= target.midis.length) {
-        matchedMidisRef.current = [];
-        setMatchedMidis([]);
-        const nextIndex = activeIndexRef.current + 1;
-        if (nextIndex >= practiceGroups.length) window.setTimeout(markStageComplete, 280);
-        else {
-          activeIndexRef.current = nextIndex;
-          setActiveIndex(nextIndex);
-        }
+      const nextIndex = activeIndexRef.current + 1;
+      if (nextIndex >= practiceTargets.length) window.setTimeout(markStageComplete, 280);
+      else {
+        activeIndexRef.current = nextIndex;
+        setActiveIndex(nextIndex);
       }
     } else {
       setNoteStatus("wrong");
@@ -196,7 +193,7 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
       }));
     }
     window.setTimeout(() => setNoteStatus("idle"), 360);
-  }, [markStageComplete, practiceGroups]);
+  }, [markStageComplete, practiceTargets]);
 
   const stopSession = useCallback(() => {
     sessionGenerationRef.current += 1;
@@ -208,32 +205,40 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
     setDetectedMidi(undefined);
     setNoteStatus("idle");
     setCalibrationProgress(0);
+    setMicrophoneLevel(0);
   }, []);
 
   const listen = useCallback(async () => {
     if (!stageNotes.length) return;
-    stopSession();
-    setMode("listening");
-    modeRef.current = "listening";
-    async function playPass() {
-      await scorePlayer.current.play(
-        stageNotes,
-        effectiveBpm,
-        (index) => {
-          activeIndexRef.current = index;
-          setActiveIndex(index);
-        },
-        () => {
-          if (loopRef.current && modeRef.current === "listening") void playPass();
-          else setMode("idle");
-        },
-      );
+    setPlaybackError("");
+    try {
+      await unlockAudio();
+      stopSession();
+      setMode("listening");
+      modeRef.current = "listening";
+      async function playPass() {
+        await scorePlayer.current.play(
+          stageNotes,
+          effectiveBpm,
+          (index) => {
+            activeIndexRef.current = index;
+            setActiveIndex(index);
+          },
+          () => {
+            if (loopRef.current && modeRef.current === "listening") void playPass();
+            else setMode("idle");
+          },
+        );
+      }
+      await playPass();
+    } catch (reason) {
+      stopSession();
+      setPlaybackError(reason instanceof Error ? reason.message : "Le son n’a pas pu démarrer.");
     }
-    await playPass();
   }, [effectiveBpm, stageNotes, stopSession]);
 
   const practice = async () => {
-    if (!practiceGroups.length) return;
+    if (!practiceTargets.length) return;
     stopSession();
     const sessionGeneration = ++sessionGenerationRef.current;
     setMicrophoneError("");
@@ -242,24 +247,25 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
     setStats(empty);
     setActiveIndex(0);
     activeIndexRef.current = 0;
-    matchedMidisRef.current = [];
-    setMatchedMidis([]);
-    setMode("calibrating");
-    modeRef.current = "calibrating";
+    setMode("requesting");
+    modeRef.current = "requesting";
     try {
-      const profile = await pitchDetector.current.start(
+      await unlockAudio();
+      await pitchDetector.current.start(
         (pitch) => handlePlayedNote(pitch.midi),
-        (progress, calibrated) => {
+        (progress) => {
+          setMode("calibrating");
+          modeRef.current = "calibrating";
           setCalibrationProgress(progress);
-          if (calibrated) setCalibrationProfile(calibrated);
         },
+        (level) => setMicrophoneLevel(level),
       );
       if (sessionGeneration !== sessionGenerationRef.current) return;
-      setCalibrationProfile(profile);
       setMode("practicing");
       modeRef.current = "practicing";
     } catch (reason) {
       if (sessionGeneration !== sessionGenerationRef.current) return;
+      pitchDetector.current.stop();
       setMode("idle");
       modeRef.current = "idle";
       setMicrophoneError(reason instanceof Error ? reason.message : "Le microphone n’a pas pu être activé.");
@@ -272,8 +278,6 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
     setTempoFactor(nextStage.tempoFactor);
     setActiveIndex(0);
     activeIndexRef.current = 0;
-    matchedMidisRef.current = [];
-    setMatchedMidis([]);
     const empty = freshStats();
     statsRef.current = empty;
     setStats(empty);
@@ -337,22 +341,24 @@ export function PracticeStudio({ score, onImport, onUpdateScore }: PracticeStudi
                 <button type="button" className={loopOn ? "is-on" : ""} onClick={() => setLoopOn((value) => !value)} aria-pressed={loopOn}><Repeat size={18} /> Boucle</button>
               </div>
             </div>
-            <div className="score-viewport"><div className="measure-chip">Mesure {activeNote?.measure || stage.measureStart}</div><ScoreViewer score={score} notes={stageNotes} activeIndex={activeIndex} /></div>
+            <div className="score-viewport"><div className="measure-chip">Mesure {activeNote?.measure || stage.measureStart}</div><ScoreViewer score={score} notes={stageNotes} activeIndex={activeIndex} activeNoteIds={activeNoteIds} naming={naming} /></div>
           </div>
 
           <PianoKeyboard notes={stageNotes} expectedMidis={expectedGroup?.midis || []} detectedMidi={detectedMidi} status={noteStatus} onKey={handlePlayedNote} naming={naming} />
-          {expectedGroup && expectedGroup.midis.length > 1 && mode === "practicing" && <p className="chord-progress">Accord : {matchedMidis.length}/{expectedGroup.midis.length} notes reconnues. Jouez-les ensemble ou rapidement l’une après l’autre.</p>}
+          {passageContainsChords && mode === "practicing" && <p className="chord-progress">Mode note après note : les accords sont décomposés du grave vers l’aigu pour que chaque note soit reconnue et validée.</p>}
 
           <YouTubeLesson key={stage.id} stage={stage} links={score.videoLessons || []} onChange={(videoLessons) => void onUpdateScore({ ...score, videoLessons })} />
 
           {microphoneError && <p className="inline-error microphone-error" role="alert">{microphoneError} Vérifiez l’autorisation dans Safari et utilisez une adresse HTTPS.</p>}
+          {playbackError && <p className="inline-error microphone-error" role="alert">{playbackError} Touchez de nouveau « Écouter » pour autoriser le son sur l’iPad.</p>}
 
           <footer className="transport-bar">
             <button className="listen-button" type="button" onClick={() => mode === "listening" ? stopSession() : void listen()}>{mode === "listening" ? <Pause size={20} weight="fill" /> : <Ear size={20} />}{mode === "listening" ? "Pause" : "Écouter"}</button>
-            <button className="practice-button" type="button" onClick={() => mode === "practicing" || mode === "calibrating" ? stopSession() : void practice()}>{mode === "practicing" || mode === "calibrating" ? <Stop size={20} weight="fill" /> : <Microphone size={20} weight="fill" />}{mode === "calibrating" ? "Annuler" : mode === "practicing" ? "Arrêter" : "Jouer au piano"}</button>
+            <button className="practice-button" type="button" onClick={() => mode === "practicing" || mode === "calibrating" || mode === "requesting" ? stopSession() : void practice()}>{mode === "practicing" || mode === "calibrating" || mode === "requesting" ? <Stop size={20} weight="fill" /> : <Microphone size={20} weight="fill" />}{mode === "calibrating" || mode === "requesting" ? "Annuler" : mode === "practicing" ? "Arrêter" : "Jouer au piano"}</button>
             <span className={`session-state state-${mode}`}>
+              {mode === "requesting" && <><Microphone size={16} /> Autorisez le microphone…</>}
               {mode === "calibrating" && <><Microphone size={16} /> Calibrage, restez silencieux… {Math.round(calibrationProgress * 100)} %</>}
-              {mode === "practicing" && <><Microphone size={16} /> Le micro écoute{calibrationProfile ? ` · seuil ${calibrationProfile.inputThreshold.toFixed(3)}` : ""}</>}
+              {mode === "practicing" && <><Microphone size={16} /> Le micro écoute <span className="microphone-level" aria-label={`Niveau du microphone ${Math.round(microphoneLevel * 100)} %`}><i style={{ width: `${Math.max(4, microphoneLevel * 100)}%` }} /></span></>}
               {mode === "listening" && <><Play size={16} weight="fill" /> Lecture en cours</>}
               {mode === "idle" && "Prêt"}
               {mode === "complete" && "Exercice terminé"}

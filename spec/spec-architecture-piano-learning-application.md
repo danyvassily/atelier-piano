@@ -1,6 +1,6 @@
 ---
 title: "Spécification d’architecture — Atelier Piano"
-version: "1.0.0"
+version: "1.0.1"
 status: "V1 implémentée — évolutions avancées documentées"
 date_created: "2026-09-22"
 last_updated: "2026-09-22"
@@ -58,7 +58,7 @@ La boucle principale est :
 
 ### 1.4 État actuellement implémenté
 
-La version `1.0.0` contient :
+La version `1.0.1` contient :
 
 - une application React, TypeScript et Vite ;
 - une PWA avec manifeste et service worker ;
@@ -71,10 +71,13 @@ La version `1.0.0` contient :
 - la génération d’étapes écoute, main droite, main gauche, mains ensemble et interprétation ;
 - un clavier tactile ;
 - le calibrage automatique du microphone et la reconnaissance monophonique en direct ;
+- un parcours pédagogique note après note : validation de la note juste, maintien sur la note fausse et passage immédiat à la cible suivante ;
+- la décomposition automatique des accords pour les microphones d’iPhone et d’iPad ;
 - la préparation des accords attendus dans les exercices ;
 - les compteurs de notes correctes, d’erreurs et de séries ;
 - la sauvegarde locale dans IndexedDB ;
 - l’export MusicXML, MIDI et ABC ;
+- une portée guidée défilante pour MusicXML, MIDI et transcription, accompagnée des noms `Do Ré Mi` ou `C D E` ;
 - l’affichage des notes en notation française ou internationale ;
 - l’ajout de tutoriels YouTube officiels avec passages horodatés ;
 - la sauvegarde et la restauration complète de la bibliothèque au format JSON.

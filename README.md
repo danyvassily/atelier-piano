@@ -53,7 +53,11 @@ npm run build
 4. Lancez Atelier Piano depuis son icône.
 5. Au premier exercice, autorisez le microphone.
 
+Dans « Jouer au piano », Atelier Piano fonctionne note après note : la note cible est surlignée, une note juste est validée et la suivante apparaît immédiatement. Les accords sont d’abord décomposés du grave vers l’aigu afin de rester fiables avec le microphone d’un iPad. La jauge à côté de « Le micro écoute » confirme que le son du piano arrive bien dans l’application.
+
 L’accès au microphone par `getUserMedia()` exige une adresse HTTPS, sauf sur `localhost`. Le son n’est ni enregistré ni envoyé à un serveur. Il est analysé directement dans le navigateur.
+
+Si le micro reste en attente, vérifiez dans Réglages iPadOS > Safari > Microphone que l’accès est autorisé, puis fermez et rouvrez l’application web. Après une nouvelle mise en ligne, la PWA recharge automatiquement sa dernière version ; si une ancienne version reste affichée, quittez-la complètement puis relancez-la depuis l’écran d’accueil.
 
 ## Déploiement gratuit
 

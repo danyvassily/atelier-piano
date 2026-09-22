@@ -800,6 +800,79 @@ input:focus-visible {
   font-size: 0.74rem;
 }
 
+.guided-notation {
+  min-height: 300px;
+  padding: 16px 18px 12px;
+  color: #101311;
+}
+
+.notation-window-label {
+  margin: 0 0 4px 86px;
+  color: #68716c;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.abc-practice-score {
+  width: 100%;
+  min-height: 210px;
+}
+
+.abc-practice-score svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.abc-practice-score .abcjs-title,
+.abc-practice-score .abcjs-composer,
+.abc-practice-score .abcjs-tempo {
+  display: none;
+}
+
+.note-flow {
+  display: flex;
+  gap: 7px;
+  padding: 8px 3px 4px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  border-top: 1px solid #e0ded5;
+}
+
+.note-flow-item {
+  flex: 0 0 auto;
+  min-width: 62px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid #ddd9cf;
+  border-radius: 9px;
+  background: #f7f5ee;
+  color: #555d58;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.note-flow-item small {
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.note-flow-item strong {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.note-flow-item.is-active {
+  border-color: #d96842;
+  background: #fff0df;
+  color: #8e321d;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgb(144 58 31 / 0.15);
+}
+
 .midi-roll {
   position: relative;
   min-width: 780px;
@@ -1101,12 +1174,29 @@ input:focus-visible {
 
 .session-state.state-practicing,
 .session-state.state-listening,
+.session-state.state-requesting,
 .session-state.state-calibrating {
   color: var(--accent-strong);
 }
 
 .session-state.state-complete {
   color: var(--success);
+}
+
+.microphone-level {
+  width: 58px;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-soft));
+}
+
+.microphone-level i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 80ms linear;
 }
 
 .inline-error {
@@ -1752,6 +1842,19 @@ input:focus-visible {
     min-width: 640px;
     min-height: 250px;
     padding-top: 16px;
+  }
+
+  .guided-notation {
+    min-height: 250px;
+    padding: 12px 8px 8px;
+  }
+
+  .notation-window-label {
+    margin-left: 78px;
+  }
+
+  .abc-practice-score {
+    min-height: 170px;
   }
 
   .piano-keyboard {

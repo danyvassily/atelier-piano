@@ -1,3 +1,5 @@
+import { unlockAudio } from "./audioContext";
+
 export class Metronome {
   private context: AudioContext | null = null;
   private timer: number | null = null;
@@ -5,8 +7,7 @@ export class Metronome {
 
   async start(bpm: number, beatsPerMeasure = 4): Promise<void> {
     this.stop();
-    this.context = new AudioContext({ latencyHint: "interactive" });
-    await this.context.resume();
+    this.context = await unlockAudio();
     const tick = () => {
       if (!this.context) return;
       const oscillator = this.context.createOscillator();
@@ -25,7 +26,6 @@ export class Metronome {
 
   stop(): void {
     if (this.timer !== null) window.clearInterval(this.timer);
-    if (this.context) void this.context.close();
     this.timer = null;
     this.context = null;
     this.beat = 0;
