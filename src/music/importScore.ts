@@ -4,8 +4,16 @@ import { parseLilyPond } from "./lilypond";
 
 const MEDIA_EXTENSIONS = new Set(["wav", "mp3", "ogg", "flac", "m4a", "aac", "mp4", "mov", "webm"]);
 
+/**
+ * Extensions de partitions : jamais routées vers la transcription, quel que soit
+ * le type MIME annoncé par le navigateur. Cas réel : un fichier `.mid` est souvent
+ * détecté « audio/midi », ce qui l'envoyait à tort vers l'analyse Basic Pitch.
+ */
+const SCORE_EXTENSIONS = new Set(["xml", "musicxml", "mxl", "mid", "midi", "ly", "pdf"]);
+
 export function isTranscribableMedia(file: File): boolean {
   const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (SCORE_EXTENSIONS.has(extension)) return false;
   return file.type.startsWith("audio/") || file.type.startsWith("video/") || MEDIA_EXTENSIONS.has(extension);
 }
 

@@ -52,7 +52,7 @@ export function YouTubeLesson({ stage, links, onChange }: YouTubeLessonProps) {
           {current && <button className="icon-button" type="button" aria-label="Supprimer le lien vidéo" onClick={() => { onChange(links.filter((link) => link.stageId !== stage.id)); setUrl(""); setStart(0); setEnd(""); }}><Trash size={17} /></button>}
         </div>
         {error && <p className="inline-error">{error}</p>}
-        <p className="video-policy">La vidéo reste dans le lecteur officiel. Pour créer une partition, importez votre fichier audio ou vidéo original autorisé.</p>
+        <p className="video-policy">ℹ️ Cette section <strong>relie</strong> la vidéo à ce passage pour la regarder pendant la séance — elle ne transcrit pas la vidéo en notes. Pour obtenir la partition d'un morceau : <strong>Importer</strong> un fichier MIDI (instantané) ou un fichier audio MP3/WAV (transcription locale, puis export ABC).</p>
       </div>
     </details>
   );
