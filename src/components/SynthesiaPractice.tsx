@@ -8,12 +8,15 @@ import {
   Gauge,
   Keyboard,
   Metronome as MetronomeIcon,
+  Minus,
   Palette,
   Pause,
   PianoKeys,
   Play,
+  Plus,
   PlugsConnected,
   Repeat,
+  Ruler,
   SpeakerHigh,
   Stop,
   TextAa,
@@ -29,8 +32,9 @@ import { attachComputerKeyboard } from "../input/computerKeyboard";
 import { MidiInput, type MidiDeviceInfo } from "../input/midiIo";
 import { displayName } from "../music/noteNaming";
 import { PracticeScorer, type ExpectedNote, type ScorerStats } from "../practice/scoring";
-import { ACTIVE_NOTE_WINDOW_SEC, activeNotesAt, beatsToSeconds } from "../practice/timeline";
+import { ACTIVE_NOTE_WINDOW_SEC, ZOOM_STEPS, activeNotesAt, beatsToSeconds, stepZoom } from "../practice/timeline";
 import {
+  beatsPerMeasureOf,
   clampMeasure,
   createTransport,
   measureRangeToSec,
@@ -122,6 +126,16 @@ const BEST_ACCURACY_PREFIX = "atelier-synthesia";
 
 const FALLBACK_BPM = 100;
 const MIN_PLAYABLE_BPM = 30;
+
+/** Repères du piano-roll : masqués, par mesure, ou par mesure ET par temps. */
+type MarkerMode = "off" | "measures" | "all";
+
+/** Libellé du bouton des repères, selon le mode courant. */
+const MARKER_LABELS: Record<MarkerMode, string> = {
+  off: "Repères",
+  measures: "Mesures",
+  all: "Mesures + temps",
+};
 
 type MidiState = "idle" | "connecting" | "connected" | "error";
 type FeedbackKind = "perfect" | "good" | "wrong" | "miss";
@@ -232,6 +246,11 @@ function feedbackLabel(kind: FeedbackKind, naming: NoteNaming, midi: number): st
   return `Raté${name}`;
 }
 
+/** Affichage français d’un palier de zoom des touches : ×1, ×1,5, ×2 … */
+function zoomLabel(level: number): string {
+  return `×${String(level).replace(".", ",")}`;
+}
+
 /** Un champ de saisie garde la priorité sur les raccourcis clavier. */
 function isTypingTarget(node: EventTarget | null): boolean {
   if (!node || typeof node !== "object") return false;
@@ -335,6 +354,10 @@ export function SynthesiaPractice({
    */
   const [showNoteNames, setShowNoteNames] = useState(false);
   const [octaveShift, setOctaveShift] = useState(0);
+  /** Zoom des touches : 1 = clavier entier, 3 = fenêtre réduite au tiers. */
+  const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_STEPS[0]);
+  /** Repères du piano-roll : une ligne par mesure par défaut. */
+  const [markers, setMarkers] = useState<MarkerMode>("measures");
   const [playing, setPlaying] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [time, setTime] = useState(0);
@@ -930,6 +953,16 @@ export function SynthesiaPractice({
     [score],
   );
 
+  /** Zoom des touches : un palier de plus (direction > 0) ou de moins. */
+  const changeZoom = useCallback((direction: number) => {
+    setZoomLevel((current) => stepZoom(current, direction));
+  }, []);
+
+  /** Repères du piano-roll : masqués → par mesure → par mesure et par temps. */
+  const cycleMarkers = useCallback(() => {
+    setMarkers((current) => (current === "off" ? "measures" : current === "measures" ? "all" : "off"));
+  }, []);
+
   /* --------------------------- Rendu --------------------------- */
 
   if (!hasScoreNotes) {
@@ -1013,6 +1046,31 @@ export function SynthesiaPractice({
                 </button>
               ))}
             </div>
+            {/* Zoom des touches : réduire la fenêtre visible du clavier et la
+                laisser suivre les notes (iPhone, écrans étroits). */}
+            <div className="synthesia-zoom" role="group" aria-label="Zoom des touches">
+              <button
+                type="button"
+                className="synthesia-zoom-step"
+                onClick={() => changeZoom(-1)}
+                disabled={zoomLevel <= ZOOM_STEPS[0]}
+                aria-label="Réduire le zoom des touches"
+              >
+                <Minus size={16} weight="bold" />
+              </button>
+              <output className="synthesia-zoom-value" aria-live="polite">
+                {zoomLabel(zoomLevel)}
+              </output>
+              <button
+                type="button"
+                className="synthesia-zoom-step"
+                onClick={() => changeZoom(1)}
+                disabled={zoomLevel >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
+                aria-label="Agrandir le zoom des touches"
+              >
+                <Plus size={16} weight="bold" />
+              </button>
+            </div>
           </div>
 
           <div className="synthesia-bar-group synthesia-bar-toggles">
@@ -1045,6 +1103,22 @@ export function SynthesiaPractice({
               onClick={() => setShowNoteNames((value) => !value)}
             >
               <TextAa size={18} /> Noms
+            </button>
+            {/* Repères du piano-roll : une ligne par mesure, puis par temps. */}
+            <button
+              type="button"
+              className={markers !== "off" ? "is-on" : ""}
+              aria-pressed={markers !== "off"}
+              onClick={cycleMarkers}
+              aria-label={
+                markers === "off"
+                  ? "Repères de mesure masqués"
+                  : markers === "measures"
+                    ? "Repères de mesure affichés : une ligne par mesure"
+                    : "Repères affichés : lignes par mesure et par temps"
+              }
+            >
+              <Ruler size={18} /> {MARKER_LABELS[markers]}
             </button>
             <button
               type="button"
@@ -1174,6 +1248,11 @@ export function SynthesiaPractice({
           onKeyPress={handleNoteOn}
           onKeyRelease={handleNoteOff}
           heightPx={canvasHeightPx}
+          zoomLevel={zoomLevel}
+          beatsPerMeasure={beatsPerMeasureOf(score)}
+          measureCount={score.measureCount}
+          showMeasureLines={markers !== "off"}
+          showBeatLines={markers === "all"}
           className="synthesia-canvas"
         />
         <div key={feedback.id} className={`synthesia-flash is-${feedback.kind}`} aria-hidden="true" />

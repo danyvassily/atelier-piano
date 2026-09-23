@@ -337,3 +337,231 @@ export function loopProgress(atSeconds: number, loopStartSec: number, loopEndSec
   const wrapped = ((offset % span) + span) % span;
   return start + wrapped;
 }
+
+/* ------------------------------------------------------------------ */
+/* Repères de mesure du piano-roll                                    */
+/* ------------------------------------------------------------------ */
+
+/** Nombre de temps par défaut d’une mesure (4/4) quand rien n’est précisé. */
+export const DEFAULT_BEATS_PER_MEASURE = 4;
+
+/** Garde-fou : nombre maximal de repères produits pour une image. */
+export const MAX_MARKER_LINES = 96;
+
+/** Repère vertical du piano-roll : numéro de mesure et ordonnée en pixels. */
+export interface MeasureLine {
+  /** Ordonnée du repère (0 = haut de la scène, `hitLineY` = ligne de frappe). */
+  yPx: number;
+  /** Numéro de mesure (1 = première mesure du morceau, sauf décalage demandé). */
+  measure: number;
+}
+
+/** Repère de temps (un temps), encore plus discret que les repères de mesure. */
+export interface BeatLine {
+  /** Ordonnée du repère (0 = haut de la scène, `hitLineY` = ligne de frappe). */
+  yPx: number;
+  /** Numéro du temps (1 = premier temps du morceau, sauf décalage demandé). */
+  beat: number;
+}
+
+/** Géométrie et bornes communes aux repères de mesure et de temps. */
+export interface TimelineLinesOptions {
+  /** Tempo nominal (BPM). */
+  bpm: number;
+  /** Vitesse de chute du piano-roll, en pixels par seconde. */
+  pxPerSec: number;
+  /** Ordonnée de la ligne de frappe (le haut du clavier intégré). */
+  hitLineY: number;
+  /** Facteur de tempo appliqué (1 par défaut). */
+  tempoFactor?: number;
+  /** Nombre de temps (noires) par mesure : 4 par défaut. */
+  beatsPerMeasure?: number;
+  /**
+   * Numéro affiché pour la première mesure du morceau (1 par défaut) : une
+   * section démarrée en cours de partition peut ainsi garder la numérotation
+   * de la partition d’origine.
+   */
+  firstMeasure?: number;
+  /** Nombre de mesures du morceau : borne les repères (illimité par défaut). */
+  measureCount?: number;
+  /** Nombre maximal de repères rendus (garde-fou, 96 par défaut). */
+  maxLines?: number;
+}
+
+/** Réglage interne d’une famille de repères (mesure, ou temps). */
+interface MarkerOptions {
+  bpm: number;
+  pxPerSec: number;
+  hitLineY: number;
+  tempoFactor: number;
+  /** Nombre de temps (noires) par mesure, déjà assaini. */
+  beatsPerMeasure: number;
+  /** Numéro affiché pour la première unité (mesure 1, ou temps 1). */
+  firstUnit: number;
+  /** Nombre d’unités du morceau (infini quand il n’est pas connu). */
+  unitCount: number;
+  /** Nombre maximal de repères rendus. */
+  limit: number;
+}
+
+/**
+ * Cœur commun des repères : une graduation par unité (`beatsPerUnit` temps,
+ * mesure ou temps selon l’appelant), posée sur la ligne de frappe au moment où
+ * l’unité commence et remontant le piano-roll à la vitesse des notes. Seuls les
+ * repères encore dans la zone de jeu sont rendus, du plus bas (proche de la
+ * ligne de frappe) vers le plus haut.
+ */
+function markerLines(
+  atSeconds: number,
+  beatsPerUnit: number,
+  options: MarkerOptions,
+): Array<{ yPx: number; index: number }> {
+  const { bpm, pxPerSec, hitLineY, tempoFactor, firstUnit, unitCount, limit } = options;
+  if (!Number.isFinite(atSeconds) || !(pxPerSec > 0) || !(hitLineY > 0) || !(beatsPerUnit > 0)) return [];
+  const unitSeconds = beatsToSeconds(beatsPerUnit, bpm, tempoFactor);
+  if (!(unitSeconds > 0)) return [];
+  const beats = secondsToBeats(atSeconds, bpm, tempoFactor);
+  const currentIndex = Math.floor(Math.max(0, beats) / beatsPerUnit);
+  // Nombre d’unités qui tiennent au-dessus de la ligne de frappe, plus la
+  // suivante (elle apparaît en haut de la scène).
+  const visibleSpan = Math.ceil(hitLineY / (unitSeconds * pxPerSec)) + 1;
+  const lastIndex = Math.min(unitCount - 1, currentIndex + visibleSpan);
+  const lines: Array<{ yPx: number; index: number }> = [];
+  for (let index = Math.max(0, currentIndex - visibleSpan); index <= lastIndex && lines.length < limit; index += 1) {
+    const onsetSec = beatsToSeconds(index * beatsPerUnit, bpm, tempoFactor);
+    const yPx = hitLineY + (atSeconds - onsetSec) * pxPerSec;
+    if (yPx < 0 || yPx > hitLineY) continue;
+    lines.push({ yPx, index: index + firstUnit });
+  }
+  return lines;
+}
+
+/** Options réglées à partir de la requête de l’appelant (valeurs défensives). */
+function markerOptions(options: TimelineLinesOptions): MarkerOptions {
+  const rawBeats = options.beatsPerMeasure;
+  const beats = typeof rawBeats === "number" && Number.isFinite(rawBeats) && rawBeats > 0 ? rawBeats : DEFAULT_BEATS_PER_MEASURE;
+  const rawFirst = options.firstMeasure;
+  const first = typeof rawFirst === "number" && Number.isFinite(rawFirst) ? Math.max(0, Math.floor(rawFirst)) : 1;
+  const rawCount = options.measureCount;
+  const count = typeof rawCount === "number" && Number.isFinite(rawCount) && rawCount > 0 ? Math.floor(rawCount) : Number.POSITIVE_INFINITY;
+  const rawLimit = options.maxLines;
+  const limit = typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : MAX_MARKER_LINES;
+  return {
+    bpm: options.bpm,
+    pxPerSec: options.pxPerSec,
+    hitLineY: options.hitLineY,
+    tempoFactor: options.tempoFactor ?? 1,
+    beatsPerMeasure: beats,
+    firstUnit: first,
+    unitCount: count,
+    limit,
+  };
+}
+
+/**
+ * Repères de mesure visibles à l’instant donné : une ligne par début de mesure,
+ * placée à `hitLineY` quand la mesure commence puis remontant le piano-roll.
+ * Les mesures sont numérotées depuis `firstMeasure` (1 par défaut) et bornées au
+ * morceau (`measureCount`) ; le résultat est trié de la mesure la plus basse
+ * (proche de la ligne de frappe) vers la plus haute.
+ */
+export function measureLinesVisible(atSeconds: number, options: TimelineLinesOptions): MeasureLine[] {
+  const base = markerOptions(options);
+  return markerLines(atSeconds, base.beatsPerMeasure, base).map(({ yPx, index }) => ({ yPx, measure: index }));
+}
+
+/**
+ * Repères de temps visibles à l’instant donné : un repère par temps, encore plus
+ * discret que les repères de mesure (repliés sur la même géométrie).
+ */
+export function beatLinesVisible(atSeconds: number, options: TimelineLinesOptions): BeatLine[] {
+  return markerLines(atSeconds, 1, markerOptions(options)).map(({ yPx, index }) => ({ yPx, beat: index }));
+}
+
+/**
+ * Opacité d’une étiquette de mesure : maximale sur la ligne de frappe, elle
+ * s’estompe progressivement vers le haut de la scène (quadratique, pour rester
+ * lisible dans la zone de jeu proche).
+ */
+export function measureLabelAlpha(yPx: number, hitLineY: number, minAlpha = 0.16): number {
+  const floor = Number.isFinite(minAlpha) ? clamp(minAlpha, 0, 1) : 0.16;
+  if (!Number.isFinite(yPx) || !Number.isFinite(hitLineY) || !(hitLineY > 0)) return floor;
+  const ratio = clamp(yPx / hitLineY, 0, 1);
+  return floor + (1 - floor) * ratio * ratio;
+}
+
+/* ------------------------------------------------------------------ */
+/* Zoom des touches                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Marge (demi-tons) autour du cluster de notes que le zoom garde à l’écran. */
+export const ZOOM_FOCUS_PAD_SEMITONES = 4;
+
+/** Plancher du nombre de demi-tons visibles quand les touches sont zoomées. */
+export const MIN_ZOOM_SPAN_SEMITONES = 12;
+
+/** Paliers de zoom des touches proposés par la barre de transport. */
+export const ZOOM_STEPS = [1, 1.5, 2, 2.5, 3] as const;
+
+/** Focus du zoom : une hauteur, un cluster de hauteurs, ou directement une plage. */
+export type ZoomFocus = number | readonly number[] | MidiRange | null | undefined;
+
+/** Bornes du focus demandé, ou `null` s’il ne contient aucune hauteur finie. */
+function focusBoundsOf(focus: ZoomFocus): MidiRange | null {
+  if (focus === null || focus === undefined) return null;
+  let values: number[];
+  if (typeof focus === "number") values = [focus];
+  else if (Array.isArray(focus)) values = [...(focus as readonly number[])];
+  else values = [(focus as MidiRange).min, (focus as MidiRange).max];
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (!finite.length) return null;
+  return { min: Math.min(...finite), max: Math.max(...finite) };
+}
+
+/**
+ * Fenêtre MIDI réellement affichée par le clavier, pour un zoom donné.
+ *
+ * - `zoom` ≤ 1 (ou inexploitable) renvoie la plage de base telle quelle : le
+ *   comportement de la vue ×1 reste strictement inchangé ;
+ * - au-delà, la fenêtre couvre `span de base / zoom` demi-tons, jamais moins de
+ *   `minSpan` (12 par défaut) ni plus que la plage de base ;
+ * - la fenêtre est centrée sur `focusMidi` (hauteur unique, milieu du cluster de
+ *   notes en cours et à venir, ou milieu de la plage si le focus est absent) et
+ *   reste bornée au clavier du morceau : elle ne montre jamais autre chose que
+ *   des touches existantes.
+ */
+export function computeViewRange(
+  baseRange: MidiRange,
+  zoom: number,
+  focusMidi: ZoomFocus,
+  minSpan: number = MIN_ZOOM_SPAN_SEMITONES,
+): MidiRange {
+  const rawMin = Number.isFinite(baseRange.min) ? baseRange.min : MIN_RANGE_MIDI;
+  const rawMax = Number.isFinite(baseRange.max) ? baseRange.max : MAX_RANGE_MIDI;
+  const low = clamp(Math.round(Math.min(rawMin, rawMax)), MIN_RANGE_MIDI, MAX_RANGE_MIDI);
+  const high = clamp(Math.round(Math.max(rawMin, rawMax)), MIN_RANGE_MIDI, MAX_RANGE_MIDI);
+  const baseSpan = high - low;
+  if (!(baseSpan > 0)) return { min: low, max: high };
+  const floorSpan = Number.isFinite(minSpan) && minSpan > 0 ? Math.max(1, Math.round(minSpan)) : MIN_ZOOM_SPAN_SEMITONES;
+  const safeZoom = Number.isFinite(zoom) && zoom > 1 ? zoom : 1;
+  const span = clamp(Math.round(baseSpan / safeZoom), Math.min(floorSpan, baseSpan), baseSpan);
+  if (span >= baseSpan) return { min: low, max: high };
+  const focus = focusBoundsOf(focusMidi);
+  const center = focus ? (focus.min + focus.max) / 2 : (low + high) / 2;
+  const min = clamp(Math.round(center - span / 2), low, high - span);
+  return { min, max: min + span };
+}
+
+/**
+ * Palier de zoom voisin : `direction` > 0 agrandit, < 0 réduit. Une valeur hors
+ * palier (ou inexploitable) retombe sur le palier le plus proche, et les bornes
+ * ×1 / ×3 ne sont jamais dépassées.
+ */
+export function stepZoom(level: number, direction: number): number {
+  const steps: readonly number[] = ZOOM_STEPS;
+  const current = Number.isFinite(level)
+    ? steps.reduce((best, step) => (Math.abs(step - level) < Math.abs(best - level) ? step : best), steps[0])
+    : steps[0];
+  const shift = direction > 0 ? 1 : direction < 0 ? -1 : 0;
+  return steps[clamp(steps.indexOf(current) + shift, 0, steps.length - 1)];
+}

@@ -3511,3 +3511,78 @@ input:focus-visible {
     transition: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Zoom des touches : pas-à-pas − / + dans la barre de transport      */
+/* ------------------------------------------------------------------ */
+
+.synthesia-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+}
+
+/* Les deux boutons restent carrés : la valeur du zoom tient entre eux. */
+.synthesia-bar .synthesia-zoom button {
+  min-width: 40px;
+  justify-content: center;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.synthesia-bar .synthesia-zoom button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.synthesia-zoom-step:disabled {
+  opacity: 0.35;
+}
+
+.synthesia-zoom-value {
+  min-width: 44px;
+  text-align: center;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.synthesia.is-fullscreen .synthesia-zoom,
+.synthesia.immersive .synthesia-zoom {
+  border-color: rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.06);
+}
+
+.synthesia.is-fullscreen .synthesia-bar .synthesia-zoom button,
+.synthesia.immersive .synthesia-bar .synthesia-zoom button {
+  color: #b9c4cd;
+}
+
+.synthesia.is-fullscreen .synthesia-zoom-value,
+.synthesia.immersive .synthesia-zoom-value {
+  color: #f2f6f9;
+}
+
+@media (max-width: 680px) {
+  /* Sur téléphone, le contrôle garde sa place dans la rangée défilante. */
+  .synthesia-bar-group > .synthesia-zoom {
+    flex: 0 0 auto;
+  }
+
+  .synthesia-bar .synthesia-zoom button {
+    min-width: 36px;
+    min-height: 34px;
+  }
+
+  .synthesia-zoom-value {
+    min-width: 38px;
+  }
+}

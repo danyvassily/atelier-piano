@@ -5,14 +5,25 @@ import {
   ACTIVE_NOTE_WINDOW_SEC,
   BLACK_KEY_WIDTH_RATIO,
   CHORD_WINDOW_SEC,
+  DEFAULT_BEATS_PER_MEASURE,
   MIN_NOTE_HEIGHT_PX,
+  MIN_ZOOM_SPAN_SEMITONES,
+  ZOOM_FOCUS_PAD_SEMITONES,
   activeNotesAt,
+  beatLinesVisible,
+  beatsToSeconds,
   buildLayout,
   computeRange,
+  computeViewRange,
+  measureLabelAlpha,
+  measureLinesVisible,
   sortNotesByOnset,
   upcomingNote,
   visibleNotes,
+  type BeatLine,
   type KeyboardLayout,
+  type MeasureLine,
+  type MidiRange,
   type VisibleNote,
 } from "../practice/timeline";
 
@@ -39,13 +50,18 @@ const COLOR = {
   /** Ligne de frappe : un repère cyan discret, jamais un trait blanc criard. */
   hitLine: "rgba(79, 195, 247, 0.35)",
   hitGlow: "rgba(79, 195, 247, 0.22)",
+  /** Repères de mesure : un trait blanc très discret, jamais un mur. */
+  measureLine: "rgba(255, 255, 255, 0.10)",
+  /** Repères de temps : encore plus discrets que les mesures. */
+  beatLine: "rgba(255, 255, 255, 0.045)",
+  /** Numéro de mesure : posé près de sa ligne, estompé par la distance. */
+  measureLabel: "#e9eff6",
   /** Sol : bande sombre discrète sous le clavier. */
   floor: "#0a0c0f",
   whiteKeyTop: "#ffffff",
   whiteKeyMid: "#f4f5f7",
   whiteKeyBottom: "#e9ecf1",
   whiteKeySeparator: "#c9ced6",
-  whiteKeyShadow: "rgba(0, 0, 0, 0.38)",
   whiteKeyActiveTop: "#f4fbff",
   whiteKeyActiveMid: "#d9f0fc",
   whiteKeyActiveBottom: "#bee6fa",
@@ -97,31 +113,47 @@ const HIT_LINE_GAP_PX = 2;
 /** Bande de sol laissée sous les touches, en pixels. */
 const FLOOR_BAND_PX = 4;
 /** Enfoncement visuel d’une touche attendue (mais pas encore enfoncée), en pixels. */
-const KEY_SINK_PX = 2;
+const KEY_SINK_PX = 3;
 /** Enfoncement visuel d’une touche réellement enfoncée, en pixels. */
-const KEY_SINK_PRESSED_PX = 3;
+const KEY_SINK_PRESSED_PX = 4;
 /** Rayon des coins bas d’une touche noire, et des coins des touches blanches. */
 const BLACK_KEY_RADIUS_PX = 3;
 const WHITE_KEY_RADIUS_PX = 4;
 /** Hauteur du bandeau brillant (gloss) d’une touche noire, en fraction de sa longueur. */
-const BLACK_KEY_GLOSS_RATIO = 0.35;
+const BLACK_KEY_GLOSS_RATIO = 0.45;
 /** Bande d’ombre portée d’une touche noire sur les blanches, en pixels. */
-const BLACK_KEY_SHADOW_PX = 16;
+const BLACK_KEY_SHADOW_PX = 20;
 /** Épaisseur de la ligne spéculaire au bord supérieur d’une touche noire. */
 const BLACK_KEY_SPECULAR_PX = 1;
+/** Micro-biseaux latéraux d’une touche noire : l’épaisseur de la touche, en pixels. */
+const BLACK_KEY_BEVEL_PX = 1;
 /** Reflet vertical d’une touche noire : largeur et hauteur, en fractions de la touche. */
-const BLACK_KEY_STREAK_WIDTH_RATIO = 0.34;
-const BLACK_KEY_STREAK_HEIGHT_RATIO = 0.62;
+const BLACK_KEY_STREAK_WIDTH_RATIO = 0.32;
+const BLACK_KEY_STREAK_HEIGHT_RATIO = 0.66;
 /** Reflet vertical d’une touche blanche : hauteur, en fraction de la touche. */
 const WHITE_KEY_SHEEN_HEIGHT_RATIO = 0.3;
+/** Biseau latéral d’une touche blanche : flancs gauche et droit, en pixels. */
+const WHITE_KEY_BEVEL_PX = 2;
+/** Bande avant (épaisseur de la touche) au bas d’une touche blanche, en pixels. */
+const WHITE_KEY_FRONT_PX = 6;
 /** Ombre de pose au bas d’une touche blanche, en pixels. */
-const KEY_LANDING_SHADOW_PX = 16;
+const KEY_LANDING_SHADOW_PX = 18;
 /** Épaisseur de la ligne de frappe, en pixels. */
 const HIT_LINE_THICKNESS_PX = 2;
+/** Police des numéros de mesure, en pixels (petite mais lisible). */
+const MEASURE_LABEL_FONT_PX = 10;
+/** Marge des numéros de mesure depuis le bord gauche de la scène, en pixels. */
+const MEASURE_LABEL_MARGIN_PX = 5;
 /** Cible tactile minimale : sur iPad, une touche étroite reste attrapable. */
 const MIN_TOUCH_TARGET_PX = 24;
 /** Durée de chute d’une note du haut du canvas jusqu’à la ligne de frappe. */
 const FALL_SECONDS = 1.8;
+/** Avance du zoom sur les notes à venir, en secondes (le temps d’une chute). */
+const ZOOM_LOOKAHEAD_SEC = 1.6;
+/** Constante de temps du recentrage du zoom, en secondes (auto-pan doux). */
+const ZOOM_PAN_TAU_SEC = 0.35;
+/** Écart (demi-tons) en dessous duquel le zoom est considéré comme arrivé. */
+const ZOOM_PAN_EPSILON = 0.35;
 /** Facteur d’échelle maximal (mémoire des canvas sur iPad). */
 const MAX_DEVICE_PIXEL_RATIO = 3;
 /** Épaisseur du liseré clair en haut d’une note, en pixels. */
@@ -161,6 +193,19 @@ export interface FallingNotesProps {
   heightPx?: number;
   /** Classe CSS appliquée au canvas. */
   className?: string;
+  /**
+   * Zoom des touches : 1 = clavier entier (défaut), jusqu’à 3 = fenêtre réduite
+   * au tiers. Au-delà de 1, la fenêtre visible suit les notes en cours et à venir.
+   */
+  zoomLevel?: number;
+  /** Nombre de temps (noires) par mesure, pour les repères (4 par défaut). */
+  beatsPerMeasure?: number;
+  /** Nombre de mesures du morceau : borne les repères (illimité par défaut). */
+  measureCount?: number;
+  /** Repères de mesure verticaux et leur numéro (activés par défaut). */
+  showMeasureLines?: boolean;
+  /** Repères de temps, encore plus discrets (désactivés par défaut). */
+  showBeatLines?: boolean;
 }
 
 interface FrameGeometry {
@@ -184,7 +229,48 @@ interface FrameData {
   naming: NoteNaming;
   showNoteNames: boolean;
   colorByPitch: boolean;
+  /** Repères de mesure visibles (vide quand l’option est désactivée). */
+  measureLines: MeasureLine[];
+  /** Repères de temps visibles (vide quand l’option est désactivée). */
+  beatLines: BeatLine[];
 }
+
+/**
+ * Tout ce dont une image a besoin : React publie cette configuration, la boucle
+ * de rendu en déduit la géométrie, la fenêtre du clavier (zoom) et les repères.
+ * La fenêtre zoomée peut ainsi suivre les notes en douceur, image par image,
+ * sans repasser par un rendu React.
+ */
+interface Scene {
+  /** Notes pré-triées par attaque. */
+  notes: NoteEvent[];
+  bpm: number;
+  tempoFactor: number;
+  currentTimeSec: number;
+  hand: Hand;
+  widthPx: number;
+  heightPx: number;
+  /** Plage MIDI complète du morceau (vue ×1). */
+  baseRange: MidiRange;
+  /** Zoom demandé (1 = clavier entier). */
+  zoom: number;
+  /** Cluster de notes suivi par le zoom, élargi de ± 4 demi-tons. */
+  focus: MidiRange | null;
+  expectedMidis: Set<number>;
+  pressedMidis: Set<number>;
+  activeNoteIds: Set<string>;
+  naming: NoteNaming;
+  showNoteNames: boolean;
+  colorByPitch: boolean;
+  beatsPerMeasure: number;
+  measureCount: number;
+  showMeasureLines: boolean;
+  showBeatLines: boolean;
+}
+
+/** Tableaux vides partagés : aucun repère à dessiner. */
+const NO_MEASURE_LINES: MeasureLine[] = [];
+const NO_BEAT_LINES: BeatLine[] = [];
 
 /** Géométrie verticale du canvas : zone de chute en haut, clavier en bas. */
 function computeGeometry(widthPx: number, heightPx: number, layout: KeyboardLayout): FrameGeometry {
@@ -206,6 +292,96 @@ function computeGeometry(widthPx: number, heightPx: number, layout: KeyboardLayo
     blackKeyWidthPx: whiteKeyWidthPx * BLACK_KEY_WIDTH_RATIO,
     hitLineY: Math.max(0, keyboardTopY - HIT_LINE_GAP_PX),
   };
+}
+
+/** Centre MIDI visé par le zoom (milieu du cluster suivi), ou `null` sans focus. */
+function focusCenterOf(focus: MidiRange | null): number | null {
+  if (!focus) return null;
+  return (focus.min + focus.max) / 2;
+}
+
+/**
+ * Résout une image à dessiner : fenêtre MIDI (zoom), clavier, notes visibles et
+ * repères de mesure. Au zoom ×1, la fenêtre `computeViewRange` renvoie la plage
+ * de base : le rendu est exactement celui d’avant le zoom.
+ */
+function resolveFrame(scene: Scene, focusCenter: number | null): FrameData {
+  const viewRange = computeViewRange(scene.baseRange, scene.zoom, focusCenter, MIN_ZOOM_SPAN_SEMITONES);
+  const layout = buildLayout(viewRange);
+  const geometry = computeGeometry(scene.widthPx, scene.heightPx, layout);
+  const pxPerSec = Math.max(48, geometry.hitLineY / FALL_SECONDS);
+  let visible = visibleNotes(scene.notes, scene.currentTimeSec, {
+    bpm: scene.bpm,
+    tempoFactor: scene.tempoFactor,
+    pxPerSec,
+    hitLineY: geometry.hitLineY,
+    layout,
+    widthPx: geometry.widthPx,
+    hand: scene.hand,
+    minHeightPx: MIN_NOTE_HEIGHT_PX,
+    sorted: true,
+  });
+  // Zoom : une note hors de la fenêtre n’a plus de touche à l’écran, elle est
+  // donc écartée (au zoom ×1 la fenêtre couvre tout le morceau : rien ne bouge).
+  if (scene.zoom > 1) {
+    visible = visible.filter(({ note }) => note.midi >= viewRange.min && note.midi <= viewRange.max);
+  }
+  const markerOptions = {
+    bpm: scene.bpm,
+    tempoFactor: scene.tempoFactor,
+    pxPerSec,
+    hitLineY: geometry.hitLineY,
+    beatsPerMeasure: scene.beatsPerMeasure,
+    measureCount: scene.measureCount,
+  };
+  return {
+    geometry,
+    layout,
+    visible,
+    expectedMidis: scene.expectedMidis,
+    pressedMidis: scene.pressedMidis,
+    activeNoteIds: scene.activeNoteIds,
+    naming: scene.naming,
+    showNoteNames: scene.showNoteNames,
+    colorByPitch: scene.colorByPitch,
+    measureLines: scene.showMeasureLines ? measureLinesVisible(scene.currentTimeSec, markerOptions) : NO_MEASURE_LINES,
+    beatLines: scene.showBeatLines ? beatLinesVisible(scene.currentTimeSec, markerOptions) : NO_BEAT_LINES,
+  };
+}
+
+/**
+ * Recentrage progressif du zoom : le centre visé (cluster des notes en cours et
+ * à venir) est rejoint en douceur, image par image. Rend `true` tant que la
+ * fenêtre bouge, pour que la boucle de rendu continue de redessiner — au zoom
+ * ×1 et hors lecture, rien ne bouge et la boucle reste au repos.
+ */
+function advanceFocus(
+  scene: Scene | null,
+  nowMs: number,
+  focusRef: { current: number | null },
+  lastTickRef: { current: number },
+): boolean {
+  const previous = lastTickRef.current;
+  lastTickRef.current = nowMs;
+  if (!scene) return false;
+  const target = focusCenterOf(scene.focus);
+  if (scene.zoom <= 1 || target === null) {
+    focusRef.current = target;
+    return false;
+  }
+  const current = focusRef.current;
+  if (current === null) {
+    focusRef.current = target;
+    return true;
+  }
+  const delta = target - current;
+  if (Math.abs(delta) <= ZOOM_PAN_EPSILON) {
+    focusRef.current = target;
+    return false;
+  }
+  const dt = Math.min(0.25, Math.max(0, (nowMs - previous) / 1000));
+  focusRef.current = current + delta * (1 - Math.exp(-dt / ZOOM_PAN_TAU_SEC));
+  return true;
 }
 
 /** Couleur d’une note : main droite cyan, main gauche bleu, ou roue chromatique. */
@@ -275,6 +451,49 @@ function drawLanes(context: CanvasRenderingContext2D, frame: FrameData) {
     context.fillStyle = midi % 12 === 0 ? COLOR.octave : COLOR.separator;
     context.fillRect(Math.round(index * whiteKeyWidthPx), 0, 1, hitLineY);
   });
+}
+
+/**
+ * Repères de mesure : un trait vertical discret à chaque début de mesure, son
+ * numéro posé juste au-dessus, et — quand l’option est active — un trait encore
+ * plus ténu à chaque temps. Le numéro s’estompe avec la distance à la ligne de
+ * frappe : il guide l’œil sans envahir la scène. Tout est dessiné AVANT les
+ * notes, pour que les capsules restent toujours nettes.
+ */
+function drawMeasureMarks(context: CanvasRenderingContext2D, frame: FrameData) {
+  const { widthPx, hitLineY } = frame.geometry;
+  const { measureLines, beatLines } = frame;
+  if (!(widthPx > 0) || !(hitLineY > 0) || (!measureLines.length && !beatLines.length)) return;
+  context.save();
+  context.beginPath();
+  context.rect(0, 0, widthPx, hitLineY);
+  context.clip();
+  // Repères de temps : un trait nu, sans numéro.
+  if (beatLines.length) {
+    context.fillStyle = COLOR.beatLine;
+    for (const line of beatLines) {
+      context.fillRect(0, Math.round(line.yPx), widthPx, 1);
+    }
+  }
+  // Repères de mesure : le trait, puis son numéro.
+  if (measureLines.length) {
+    context.fillStyle = COLOR.measureLine;
+    for (const line of measureLines) {
+      context.fillRect(0, Math.round(line.yPx), widthPx, 1);
+    }
+    context.font = `600 ${MEASURE_LABEL_FONT_PX}px "Avenir Next", system-ui, sans-serif`;
+    context.textAlign = "left";
+    context.textBaseline = "bottom";
+    context.fillStyle = COLOR.measureLabel;
+    for (const line of measureLines) {
+      const alpha = measureLabelAlpha(line.yPx, hitLineY);
+      if (alpha <= 0.05) continue;
+      context.globalAlpha = alpha;
+      context.fillText(String(line.measure), MEASURE_LABEL_MARGIN_PX, line.yPx - 2);
+    }
+    context.globalAlpha = 1;
+  }
+  context.restore();
 }
 
 /**
@@ -399,9 +618,12 @@ class GradientPool {
 
 /**
  * Touche blanche : dégradé renforcé (#FFFFFF → #F1F3F7 → #D9DEE8), fine ligne de
- * lumière en haut, reflet vertical sur la partie haute, ombre de pose au bas.
- * Une touche attendue se cerne de cyan et s’enfonce de deux pixels ; enfoncée,
- * elle s’enfonce de trois et se teinte plus franchement.
+ * lumière en haut, reflet vertical sur la partie haute, biseaux latéraux (les
+ * flancs se détachent du voisin), ombre de pose renforcée et bande avant plus
+ * sombre (l’épaisseur de la touche, sous la surface).
+ *
+ * Une touche attendue se cerne de cyan et s’enfonce de trois pixels ; enfoncée,
+ * elle s’enfonce un peu plus et se teinte plus franchement.
  */
 function drawWhiteKey(
   context: CanvasRenderingContext2D,
@@ -450,24 +672,56 @@ function drawWhiteKey(
     context.fillStyle = pressed ? COLOR.activeTintStrong : COLOR.activeTint;
     context.fillRect(x, top, w, height);
   }
-  // Reflet vertical : une colonne de lumière douce sur la partie haute.
-  const sheen = context.createLinearGradient(x + w * 0.16, 0, x + w * 0.84, 0);
-  sheen.addColorStop(0, "rgba(255, 255, 255, 0)");
-  sheen.addColorStop(0.42, active ? "rgba(255, 255, 255, 0.52)" : "rgba(255, 255, 255, 0.42)");
-  sheen.addColorStop(0.64, "rgba(255, 255, 255, 0.16)");
-  sheen.addColorStop(1, "rgba(255, 255, 255, 0)");
+  // Reflet vertical : une colonne de lumière douce sur la partie haute. Le
+  // dégradé est créé en coordonnées locales et posé après translation : toutes
+  // les blanches partagent ainsi le même objet (aucune allocation par touche).
+  const sheen = pool.get(`wk-sheen|${variant}|${w.toFixed(1)}`, (ctx) => {
+    const gradient = ctx.createLinearGradient(w * 0.16, 0, w * 0.84, 0);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+    gradient.addColorStop(0.42, active ? "rgba(255, 255, 255, 0.52)" : "rgba(255, 255, 255, 0.42)");
+    gradient.addColorStop(0.64, "rgba(255, 255, 255, 0.16)");
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    return gradient;
+  });
+  context.save();
+  context.translate(x, 0);
   context.fillStyle = sheen;
-  context.fillRect(x, top + 1, w, Math.max(4, height * WHITE_KEY_SHEEN_HEIGHT_RATIO));
+  context.fillRect(0, top + 1, w, Math.max(4, height * WHITE_KEY_SHEEN_HEIGHT_RATIO));
+  context.restore();
+  // Biseaux latéraux : un flanc sombre à l’extérieur, une amorce à l’intérieur.
+  const bevel = Math.max(1, Math.min(WHITE_KEY_BEVEL_PX, w * 0.24));
+  context.fillStyle = "rgba(0, 0, 0, 0.22)";
+  context.fillRect(x, top + 1, bevel, height - 2);
+  context.fillStyle = "rgba(0, 0, 0, 0.09)";
+  context.fillRect(x + bevel, top + 1, bevel, height - 2);
+  context.fillStyle = "rgba(0, 0, 0, 0.26)";
+  context.fillRect(x + w - bevel, top + 1, bevel, height - 2);
+  context.fillStyle = "rgba(0, 0, 0, 0.11)";
+  context.fillRect(x + w - bevel * 2, top + 1, bevel, height - 2);
   // Ombre de pose : la touche s’assombrit en touchant le sol.
   const landing = pool.get(`wk-landing|${variant}|${bottom}`, (ctx) => {
     const gradient = ctx.createLinearGradient(0, bottom - KEY_LANDING_SHADOW_PX, 0, bottom);
     gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-    gradient.addColorStop(0.55, "rgba(0, 0, 0, 0.12)");
-    gradient.addColorStop(1, "rgba(0, 0, 0, 0.34)");
+    gradient.addColorStop(0.55, "rgba(0, 0, 0, 0.16)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0.4)");
     return gradient;
   });
   context.fillStyle = landing;
   context.fillRect(x, bottom - KEY_LANDING_SHADOW_PX, w, KEY_LANDING_SHADOW_PX);
+  // Bande avant : l’épaisseur de la touche, nettement plus sombre que sa surface.
+  const frontPx = Math.min(WHITE_KEY_FRONT_PX, Math.max(2, height * 0.12));
+  const front = pool.get(`wk-front|${variant}|${bottom}|${frontPx.toFixed(1)}`, (ctx) => {
+    const gradient = ctx.createLinearGradient(0, bottom - frontPx, 0, bottom);
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0.05)");
+    gradient.addColorStop(0.45, "rgba(0, 0, 0, 0.22)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0.4)");
+    return gradient;
+  });
+  context.fillStyle = front;
+  context.fillRect(x, bottom - frontPx, w, frontPx);
+  // Le chant avant renvoie un peu de lumière : la tranche de la touche existe.
+  context.fillStyle = "rgba(255, 255, 255, 0.2)";
+  context.fillRect(x + 1, bottom - 1, Math.max(1, w - 2), 1);
   // Fine ligne de lumière en haut, doublée d’un liseré de biseau.
   context.fillStyle = "rgba(255, 255, 255, 0.96)";
   context.fillRect(x, top, w, 1);
@@ -477,20 +731,21 @@ function drawWhiteKey(
 }
 
 /**
- * Touche noire : dégradé #3A3F46 → #14171B → #06080A, bandeau brillant NET sur
- * les 35 % supérieurs, ligne spéculaire au bord haut, léger streak vertical, coins
- * bas arrondis. Une touche active s’entoure d’un halo cyan et s’enfonce.
+ * Touche noire : dégradé #3A3F46 → #14171B → #06080A, reflet type verre NET sur
+ * les 45 % supérieurs (limite franche), ligne spéculaire au bord haut, léger
+ * streak vertical, micro-biseaux latéraux sombres et coins bas arrondis. Une
+ * touche active s’entoure d’un halo cyan et s’enfonce.
  *
  * L’ombre portée sur les blanches est dessinée séparément, AVANT la touche :
  * c’est elle qui donne l’épaisseur du clavier.
  */
 function drawBlackKeyShadow(context: CanvasRenderingContext2D, x: number, top: number, w: number) {
   const shadow = context.createLinearGradient(0, top, 0, top + BLACK_KEY_SHADOW_PX);
-  shadow.addColorStop(0, "rgba(0, 0, 0, 0.5)");
-  shadow.addColorStop(0.35, "rgba(0, 0, 0, 0.22)");
+  shadow.addColorStop(0, "rgba(0, 0, 0, 0.58)");
+  shadow.addColorStop(0.32, "rgba(0, 0, 0, 0.3)");
   shadow.addColorStop(1, "rgba(0, 0, 0, 0)");
   context.fillStyle = shadow;
-  context.fillRect(x - 1, top, w + 2, BLACK_KEY_SHADOW_PX);
+  context.fillRect(x - 1.5, top, w + 3, BLACK_KEY_SHADOW_PX);
 }
 
 function drawBlackKey(
@@ -536,31 +791,44 @@ function drawBlackKey(
     context.fillStyle = pressed ? COLOR.activeTintStrong : COLOR.activeTint;
     context.fillRect(x, top, w, height);
   }
-  // Bandeau brillant : 35 % de la touche, dégradé marqué, limite franche.
+  // Reflet type verre : 45 % de la touche, dégradé marqué, limite franche. Le
+  // bandeau se termine par un trait sombre qui le rend net au lieu de diffus.
   const glossHeight = Math.max(4, height * BLACK_KEY_GLOSS_RATIO);
   const gloss = pool.get(`bk-gloss|${variant}|${top}|${height}`, (ctx) => {
     const gradient = ctx.createLinearGradient(0, top, 0, top + glossHeight);
-    gradient.addColorStop(0, active ? "rgba(226, 246, 255, 0.52)" : "rgba(255, 255, 255, 0.46)");
-    gradient.addColorStop(0.42, active ? "rgba(198, 236, 255, 0.22)" : "rgba(255, 255, 255, 0.2)");
-    gradient.addColorStop(0.88, "rgba(255, 255, 255, 0.06)");
-    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    gradient.addColorStop(0, active ? "rgba(232, 250, 255, 0.58)" : "rgba(255, 255, 255, 0.52)");
+    gradient.addColorStop(0.38, active ? "rgba(198, 236, 255, 0.26)" : "rgba(255, 255, 255, 0.24)");
+    gradient.addColorStop(0.86, "rgba(255, 255, 255, 0.07)");
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0.01)");
     return gradient;
   });
   context.fillStyle = gloss;
   context.fillRect(x, top, w, glossHeight);
   // Limite du bandeau : elle rend le reflet net au lieu d’un halo diffus.
-  context.fillStyle = "rgba(0, 0, 0, 0.36)";
+  context.fillStyle = "rgba(0, 0, 0, 0.46)";
   context.fillRect(x, top + glossHeight - 1, w, 1);
-  // Léger streak vertical : une colonne de lumière le long de la touche.
+  // Léger streak vertical : une colonne de lumière le long de la touche, créée
+  // en coordonnées locales pour être partagée par toutes les noires.
   const streakWidth = Math.max(2, w * BLACK_KEY_STREAK_WIDTH_RATIO);
-  const streak = context.createLinearGradient(x + w * 0.5 - streakWidth / 2, 0, x + w * 0.5 + streakWidth / 2, 0);
-  streak.addColorStop(0, "rgba(255, 255, 255, 0)");
-  streak.addColorStop(0.5, active ? "rgba(214, 243, 255, 0.3)" : "rgba(255, 255, 255, 0.22)");
-  streak.addColorStop(1, "rgba(255, 255, 255, 0)");
+  const streak = pool.get(`bk-streak|${variant}|${w.toFixed(1)}`, (ctx) => {
+    const gradient = ctx.createLinearGradient(w * 0.5 - streakWidth / 2, 0, w * 0.5 + streakWidth / 2, 0);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+    gradient.addColorStop(0.5, active ? "rgba(214, 243, 255, 0.3)" : "rgba(255, 255, 255, 0.22)");
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    return gradient;
+  });
+  context.save();
+  context.translate(x, 0);
   context.fillStyle = streak;
-  context.fillRect(x + w * 0.5 - streakWidth / 2, top + 1, streakWidth, Math.max(6, height * BLACK_KEY_STREAK_HEIGHT_RATIO));
+  context.fillRect(w * 0.5 - streakWidth / 2, top + 1, streakWidth, Math.max(6, height * BLACK_KEY_STREAK_HEIGHT_RATIO));
+  context.restore();
+  // Micro-biseaux latéraux : les flancs de la touche, toujours dans l’ombre.
+  context.fillStyle = "rgba(0, 0, 0, 0.42)";
+  context.fillRect(x, top, BLACK_KEY_BEVEL_PX, height);
+  context.fillStyle = "rgba(0, 0, 0, 0.55)";
+  context.fillRect(x + w - BLACK_KEY_BEVEL_PX, top, BLACK_KEY_BEVEL_PX, height);
   // Fine ligne spéculaire au bord supérieur de la touche.
-  context.fillStyle = active ? "rgba(240, 252, 255, 0.74)" : "rgba(255, 255, 255, 0.62)";
+  context.fillStyle = active ? "rgba(240, 252, 255, 0.8)" : "rgba(255, 255, 255, 0.68)";
   context.fillRect(x, top, w, BLACK_KEY_SPECULAR_PX);
   context.restore();
 }
@@ -605,11 +873,11 @@ function drawKeyboard(context: CanvasRenderingContext2D, frame: FrameData) {
   // une seule fois, elle remplace l’ombre de canvas de chaque touche (coûteuse).
   const restingBottom = keyboardTopY + keyHeight;
   const keyboardBottom = keyboardTopY + keyboardHeightPx;
-  const poseTop = Math.max(keyboardTopY, restingBottom - 10);
+  const poseTop = Math.max(keyboardTopY, restingBottom - 11);
   const poseShadow = context.createLinearGradient(0, poseTop, 0, keyboardBottom);
   poseShadow.addColorStop(0, "rgba(0, 0, 0, 0)");
-  poseShadow.addColorStop(0.62, COLOR.whiteKeyShadow);
-  poseShadow.addColorStop(1, "rgba(0, 0, 0, 0.66)");
+  poseShadow.addColorStop(0.62, "rgba(0, 0, 0, 0.46)");
+  poseShadow.addColorStop(1, "rgba(0, 0, 0, 0.76)");
   context.fillStyle = poseShadow;
   context.fillRect(0, poseTop, widthPx, Math.max(0, keyboardBottom - poseTop));
 
@@ -657,6 +925,8 @@ function drawFrame(context: CanvasRenderingContext2D, frame: FrameData) {
   context.fillStyle = COLOR.sky;
   context.fillRect(0, 0, frame.geometry.widthPx, frame.geometry.heightPx);
   drawLanes(context, frame);
+  // Repères de mesure sous les notes : la scène reste lisible avant tout.
+  drawMeasureMarks(context, frame);
   drawNotes(context, frame);
   drawHitLine(context, frame);
   drawKeyboard(context, frame);
@@ -703,11 +973,23 @@ export function FallingNotes({
   onKeyRelease,
   heightPx = DEFAULT_HEIGHT_PX,
   className,
+  zoomLevel = 1,
+  beatsPerMeasure = DEFAULT_BEATS_PER_MEASURE,
+  measureCount,
+  showMeasureLines = true,
+  showBeatLines = false,
 }: FallingNotesProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** Dernière image dessinée : c’est elle que lisent les interactions. */
   const frameRef = useRef<FrameData | null>(null);
+  /** Configuration publiée par React, lue par la boucle de rendu. */
+  const sceneRef = useRef<Scene | null>(null);
   const dirtyRef = useRef(true);
   const dprRef = useRef(1);
+  /** Centre MIDI de la fenêtre zoomée, animé image par image (auto-pan). */
+  const focusRef = useRef<number | null>(null);
+  /** Horodatage de l’image précédente, pour l’inertie du recentrage. */
+  const lastTickRef = useRef(0);
   /** Touches enfoncées par pointeur : pointeur → hauteur MIDI. */
   const pointerKeysRef = useRef(new Map<number, number>());
   const onKeyReleaseRef = useRef(onKeyRelease);
@@ -751,9 +1033,9 @@ export function FallingNotes({
 
   // Pré-tri unique par attaque : les images suivantes filtrent sans retrier.
   const sortedNotes = useMemo(() => sortNotesByOnset(notes), [notes]);
-  const layout = useMemo(() => buildLayout(computeRange(notes)), [notes]);
-  const geometry = useMemo(() => computeGeometry(widthPx, canvasHeightPx, layout), [widthPx, canvasHeightPx, layout]);
-  const pxPerSec = Math.max(48, geometry.hitLineY / FALL_SECONDS);
+  const baseRange = useMemo(() => computeRange(notes), [notes]);
+  /** Zoom borné : en dessous de ×1, la vue reste celle du clavier entier. */
+  const zoom = Number.isFinite(zoomLevel) && zoomLevel > 1 ? zoomLevel : 1;
   const activeNotes = useMemo(
     () => activeNotesAt(sortedNotes, currentTimeSec, ACTIVE_NOTE_WINDOW_SEC, { bpm, tempoFactor }),
     [sortedNotes, currentTimeSec, bpm, tempoFactor],
@@ -762,21 +1044,29 @@ export function FallingNotes({
     () => upcomingNote(sortedNotes, currentTimeSec, CHORD_WINDOW_SEC, { bpm, tempoFactor }),
     [sortedNotes, currentTimeSec, bpm, tempoFactor],
   );
-  const visible = useMemo(
-    () =>
-      visibleNotes(sortedNotes, currentTimeSec, {
-        bpm,
-        tempoFactor,
-        pxPerSec,
-        hitLineY: geometry.hitLineY,
-        layout,
-        widthPx: geometry.widthPx,
-        hand,
-        minHeightPx: MIN_NOTE_HEIGHT_PX,
-        sorted: true,
-      }),
-    [sortedNotes, currentTimeSec, bpm, tempoFactor, pxPerSec, geometry, layout, hand],
-  );
+  /**
+   * Cluster suivi par le zoom : notes en cours, prochaine attaque et notes qui
+   * tombent dans la fenêtre d’avance, élargies de ± 4 demi-tons pour laisser de
+   * l’air autour de la main. C’est son milieu que la vue rejoint en douceur.
+   */
+  const focus = useMemo<MidiRange | null>(() => {
+    const midis: number[] = [];
+    for (const note of activeNotes) midis.push(note.midi);
+    for (const note of upcoming) midis.push(note.midi);
+    const horizonSec = currentTimeSec + ZOOM_LOOKAHEAD_SEC;
+    for (const note of sortedNotes) {
+      const onsetSec = beatsToSeconds(note.onsetBeats, bpm, tempoFactor);
+      if (onsetSec > horizonSec) break;
+      if (onsetSec < currentTimeSec) continue;
+      if (hand !== "both" && note.hand !== hand) continue;
+      midis.push(note.midi);
+    }
+    if (!midis.length) return null;
+    return {
+      min: Math.min(...midis) - ZOOM_FOCUS_PAD_SEMITONES,
+      max: Math.max(...midis) + ZOOM_FOCUS_PAD_SEMITONES,
+    };
+  }, [activeNotes, upcoming, sortedNotes, currentTimeSec, bpm, tempoFactor, hand]);
   const expectedMidis = useMemo(() => {
     const merged = new Set<number>(activeMidis);
     for (const note of activeNotes) merged.add(note.midi);
@@ -790,53 +1080,98 @@ export function FallingNotes({
   const activeNoteIds = useMemo(() => new Set(activeNotes.map((note) => note.id)), [activeNotes]);
   const expectedCount = expectedMidis.length;
   const pressedCount = pressedKeys.length;
-  const visibleCount = visible.length;
 
-  const frame = useMemo<FrameData>(
+  /**
+   * Configuration publiée à la boucle de rendu : elle porte tout ce qui décide
+   * d’une image (horloge, vue, clavier, repères). La géométrie et les notes
+   * visibles en sont déduites à chaque image réellement dessinée.
+   */
+  const scene = useMemo<Scene>(
     () => ({
-      geometry,
-      layout,
-      visible,
+      notes: sortedNotes,
+      bpm,
+      tempoFactor,
+      currentTimeSec,
+      hand,
+      widthPx,
+      heightPx: canvasHeightPx,
+      baseRange,
+      zoom,
+      focus,
       expectedMidis: new Set(expectedMidis),
       pressedMidis: new Set(pressedKeys),
       activeNoteIds,
       naming,
       showNoteNames,
       colorByPitch,
+      beatsPerMeasure,
+      measureCount: typeof measureCount === "number" ? measureCount : Number.POSITIVE_INFINITY,
+      showMeasureLines,
+      showBeatLines,
     }),
-    [geometry, layout, visible, expectedMidis, pressedKeys, activeNoteIds, naming, showNoteNames, colorByPitch],
+    [
+      sortedNotes,
+      bpm,
+      tempoFactor,
+      currentTimeSec,
+      hand,
+      widthPx,
+      canvasHeightPx,
+      baseRange,
+      zoom,
+      focus,
+      expectedMidis,
+      pressedKeys,
+      activeNoteIds,
+      naming,
+      showNoteNames,
+      colorByPitch,
+      beatsPerMeasure,
+      measureCount,
+      showMeasureLines,
+      showBeatLines,
+    ],
   );
+  /** Nombre de notes réellement à l’écran, zoom compris (texte d’accessibilité). */
+  const visibleCount = useMemo(() => resolveFrame(scene, focusCenterOf(focus)).visible.length, [scene, focus]);
 
   useEffect(() => {
-    frameRef.current = frame;
+    sceneRef.current = scene;
     dirtyRef.current = true;
-  }, [frame]);
+  }, [scene]);
+
+  // Nouveau morceau ou nouveau zoom : la fenêtre se recale sans transition.
+  useEffect(() => {
+    focusRef.current = null;
+    dirtyRef.current = true;
+  }, [zoom, notes]);
 
   // Boucle rAF 60 fps : on ne redessine que lorsque quelque chose a changé
-  // (horloge, props, taille de l’écran, appui clavier) pour économiser la batterie.
+  // (horloge, props, taille de l’écran, appui clavier) ou que la vue zoomée
+  // glisse vers les notes suivantes, pour économiser la batterie.
   useEffect(() => {
     let handle = 0;
-    const drawNow = () => {
-      const canvas = canvasRef.current;
-      const current = frameRef.current;
-      if (!canvas || !current) return;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      const ratio = dprRef.current;
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      drawFrame(context, current);
-    };
     const schedule =
       typeof window.requestAnimationFrame === "function"
         ? window.requestAnimationFrame.bind(window)
         : (callback: FrameRequestCallback) => window.setTimeout(() => callback(Date.now()), 16);
     const unschedule =
       typeof window.cancelAnimationFrame === "function" ? window.cancelAnimationFrame.bind(window) : window.clearTimeout;
-    const tick = () => {
+    const tick = (now: number) => {
       handle = schedule(tick);
-      if (!dirtyRef.current) return;
+      const current = sceneRef.current;
+      const moving = advanceFocus(current, now, focusRef, lastTickRef);
+      if (!dirtyRef.current && !moving) return;
       dirtyRef.current = false;
-      drawNow();
+      const canvas = canvasRef.current;
+      if (!canvas || !current) return;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      const frame = resolveFrame(current, focusRef.current);
+      frameRef.current = frame;
+      const ratio = dprRef.current;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      drawFrame(context, frame);
     };
     handle = schedule(tick);
     return () => unschedule(handle);

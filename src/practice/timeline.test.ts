@@ -4,21 +4,30 @@ import {
   ACTIVE_NOTE_WINDOW_SEC,
   BLACK_KEY_WIDTH_RATIO,
   CHROMATIC_PITCH_COUNT,
+  DEFAULT_BEATS_PER_MEASURE,
   MAX_RANGE_MIDI,
   MIN_NOTE_HEIGHT_PX,
   MIN_RANGE_MIDI,
+  MIN_ZOOM_SPAN_SEMITONES,
+  ZOOM_STEPS,
   activeNotesAt,
+  beatLinesVisible,
   beatsToSeconds,
   buildLayout,
   computeRange,
+  computeViewRange,
   isBlackKey,
   loopProgress,
+  measureLabelAlpha,
+  measureLinesVisible,
   noteRectAt,
   pitchClassOf,
   secondsToBeats,
   sortNotesByOnset,
+  stepZoom,
   upcomingNote,
   visibleNotes,
+  type MidiRange,
 } from "./timeline";
 
 function makeNote(partial: Partial<NoteEvent> & { midi: number; onsetBeats: number }): NoteEvent {
@@ -383,5 +392,197 @@ describe("cohérence du thème chromatique", () => {
     const classes = new Set(Array.from({ length: 24 }, (_, index) => pitchClassOf(60 + index)));
     expect(classes.size).toBe(CHROMATIC_PITCH_COUNT);
     expect(CHROMATIC_PITCH_COUNT).toBe(12);
+  });
+});
+
+describe("measureLinesVisible", () => {
+  /** 120 BPM en 4/4 : une mesure dure 2 s, soit 200 px à 100 px/s, sur 400 px de scène. */
+  const options = { bpm: 120, pxPerSec: 100, hitLineY: 400 };
+
+  it("pose la première mesure sur la ligne de frappe au début du morceau", () => {
+    expect(measureLinesVisible(0, options)).toEqual([
+      { yPx: 400, measure: 1 },
+      { yPx: 200, measure: 2 },
+      { yPx: 0, measure: 3 },
+    ]);
+  });
+
+  it("fait descendre les repères avec l’horloge et écarte ceux qui sont sortis", () => {
+    expect(measureLinesVisible(1, options)).toEqual([
+      { yPx: 300, measure: 2 },
+      { yPx: 100, measure: 3 },
+    ]);
+    expect(measureLinesVisible(3, options)).toEqual([
+      { yPx: 300, measure: 3 },
+      { yPx: 100, measure: 4 },
+    ]);
+  });
+
+  it("suit le facteur de tempo", () => {
+    // À 0,5×, une mesure dure 4 s : la mesure 2 n’est plus qu’à 400 px.
+    expect(measureLinesVisible(0, { ...options, tempoFactor: 0.5 })).toEqual([
+      { yPx: 400, measure: 1 },
+      { yPx: 0, measure: 2 },
+    ]);
+  });
+
+  it("respecte l’armure de la partition", () => {
+    // 3/4 : trois temps par mesure, donc 1,5 s (150 px) par mesure.
+    expect(measureLinesVisible(0, { ...options, beatsPerMeasure: 3 })).toEqual([
+      { yPx: 400, measure: 1 },
+      { yPx: 250, measure: 2 },
+      { yPx: 100, measure: 3 },
+    ]);
+    expect(DEFAULT_BEATS_PER_MEASURE).toBe(4);
+    expect(measureLinesVisible(0, { ...options, beatsPerMeasure: 0 })).toEqual(measureLinesVisible(0, options));
+  });
+
+  it("borne les repères aux mesures du morceau et au garde-fou", () => {
+    expect(measureLinesVisible(0, { ...options, measureCount: 2 })).toHaveLength(2);
+    expect(measureLinesVisible(0, { ...options, maxLines: 1 })).toEqual([{ yPx: 400, measure: 1 }]);
+  });
+
+  it("décale la numérotation quand la section démarre plus loin", () => {
+    const lignes = measureLinesVisible(0, { ...options, firstMeasure: 12 });
+    expect(lignes.map((ligne) => ligne.measure)).toEqual([12, 13, 14]);
+    expect(lignes[0].yPx).toBe(400);
+  });
+
+  it("reste muet sur une géométrie inutilisable", () => {
+    expect(measureLinesVisible(Number.NaN, options)).toEqual([]);
+    expect(measureLinesVisible(0, { ...options, pxPerSec: 0 })).toEqual([]);
+    expect(measureLinesVisible(0, { ...options, hitLineY: 0 })).toEqual([]);
+    expect(measureLinesVisible(0, { ...options, bpm: 0 })).toEqual([]);
+    expect(measureLinesVisible(0, { ...options, bpm: Number.NaN })).toEqual([]);
+  });
+});
+
+describe("beatLinesVisible", () => {
+  it("marque chaque temps, jusqu’au haut de la scène", () => {
+    // 120 BPM : un temps = 0,5 s, soit 50 px ; 400 px de scène = 9 temps visibles.
+    const lignes = beatLinesVisible(0, { bpm: 120, pxPerSec: 100, hitLineY: 400 });
+    expect(lignes.slice(0, 4)).toEqual([
+      { yPx: 400, beat: 1 },
+      { yPx: 350, beat: 2 },
+      { yPx: 300, beat: 3 },
+      { yPx: 250, beat: 4 },
+    ]);
+    expect(lignes).toHaveLength(9);
+    expect(lignes.every((ligne) => ligne.yPx >= 0 && ligne.yPx <= 400)).toBe(true);
+  });
+
+  it("reste cohérent avec les repères de mesure", () => {
+    const temps = beatLinesVisible(0.5, { bpm: 120, pxPerSec: 100, hitLineY: 400 }).map((ligne) => ligne.yPx);
+    for (const mesure of measureLinesVisible(0.5, { bpm: 120, pxPerSec: 100, hitLineY: 400 })) {
+      expect(temps).toContain(mesure.yPx);
+    }
+  });
+
+  it("suit le facteur de tempo et se protège des entrées invalides", () => {
+    // À 0,5×, un temps dure 1 s : 100 px par temps.
+    const lent = beatLinesVisible(0, { bpm: 120, pxPerSec: 100, hitLineY: 400, tempoFactor: 0.5 });
+    expect(lent.slice(0, 3)).toEqual([
+      { yPx: 400, beat: 1 },
+      { yPx: 300, beat: 2 },
+      { yPx: 200, beat: 3 },
+    ]);
+    expect(beatLinesVisible(Number.NaN, { bpm: 120, pxPerSec: 100, hitLineY: 400 })).toEqual([]);
+  });
+});
+
+describe("measureLabelAlpha", () => {
+  it("s’estompe avec la distance à la ligne de frappe", () => {
+    expect(measureLabelAlpha(400, 400)).toBeCloseTo(1, 10);
+    expect(measureLabelAlpha(0, 400)).toBeCloseTo(0.16, 10);
+    const alphas = [400, 300, 200, 100, 0].map((yPx) => measureLabelAlpha(yPx, 400));
+    expect(alphas).toEqual([...alphas].sort((a, b) => b - a));
+    expect(measureLabelAlpha(200, 400)).toBeGreaterThan(measureLabelAlpha(100, 400));
+  });
+
+  it("reste borné sur une géométrie inutilisable", () => {
+    expect(measureLabelAlpha(Number.NaN, 400)).toBe(0.16);
+    expect(measureLabelAlpha(200, 0)).toBe(0.16);
+    expect(measureLabelAlpha(200, 400, 0.4)).toBeCloseTo(0.55, 10);
+    expect(measureLabelAlpha(900, 400)).toBeCloseTo(1, 10);
+  });
+});
+
+describe("computeViewRange", () => {
+  /** Clavier Do2 → Do5 (48..84) : 36 demi-tons, comme un morceau d’une octave et demie. */
+  const base: MidiRange = { min: 48, max: 84 };
+
+  it("ne change rien au zoom ×1 ni sur un zoom inexploitable", () => {
+    expect(computeViewRange(base, 1, 64)).toEqual({ min: 48, max: 84 });
+    expect(computeViewRange(base, 0.5, 64)).toEqual({ min: 48, max: 84 });
+    expect(computeViewRange(base, Number.NaN, 64)).toEqual({ min: 48, max: 84 });
+    expect(computeViewRange(base, -2, 64)).toEqual({ min: 48, max: 84 });
+  });
+
+  it("réduit la fenêtre au prorata du zoom, centrée sur le focus", () => {
+    expect(computeViewRange(base, 1.5, 66)).toEqual({ min: 54, max: 78 });
+    expect(computeViewRange(base, 2, 66)).toEqual({ min: 57, max: 75 });
+    expect(computeViewRange(base, 2.5, 66)).toEqual({ min: 59, max: 73 });
+    expect(computeViewRange(base, 3, 66)).toEqual({ min: 60, max: 72 });
+  });
+
+  it("garde un plancher de 12 demi-tons visibles", () => {
+    expect(MIN_ZOOM_SPAN_SEMITONES).toBe(12);
+    expect(computeViewRange(base, 10, 66)).toEqual({ min: 60, max: 72 });
+    // Plage de base déjà réduite au plancher : rien à zoomer.
+    expect(computeViewRange({ min: 60, max: 72 }, 3, 66)).toEqual({ min: 60, max: 72 });
+  });
+
+  it("borne la fenêtre au clavier du morceau", () => {
+    expect(computeViewRange(base, 3, 20)).toEqual({ min: 48, max: 60 });
+    expect(computeViewRange(base, 3, 110)).toEqual({ min: 72, max: 84 });
+  });
+
+  it("centre la vue sur le cluster de notes en cours et à venir", () => {
+    expect(computeViewRange(base, 3, [59, 65])).toEqual({ min: 56, max: 68 });
+    expect(computeViewRange(base, 2, { min: 60, max: 72 })).toEqual({ min: 57, max: 75 });
+    // Sans focus : milieu de la plage de base.
+    expect(computeViewRange(base, 3, null)).toEqual({ min: 60, max: 72 });
+    expect(computeViewRange(base, 3, undefined)).toEqual({ min: 60, max: 72 });
+    expect(computeViewRange(base, 3, Number.NaN)).toEqual({ min: 60, max: 72 });
+    expect(computeViewRange(base, 3, [])).toEqual({ min: 60, max: 72 });
+  });
+
+  it("survit à une plage dégénérée ou inversée", () => {
+    expect(computeViewRange({ min: 60, max: 60 }, 2, 60)).toEqual({ min: 60, max: 60 });
+    expect(computeViewRange({ min: 84, max: 48 }, 2, 66)).toEqual({ min: 57, max: 75 });
+    // Plage hors des bornes absolues du clavier : ramenée dans 24..96.
+    expect(computeViewRange({ min: 0, max: 130 }, 3, 60)).toEqual({ min: 48, max: 72 });
+  });
+
+  it("ne produit jamais une fenêtre plus large que la plage de base", () => {
+    for (const zoom of ZOOM_STEPS) {
+      const vue = computeViewRange(base, zoom, 66);
+      expect(vue.min).toBeGreaterThanOrEqual(base.min);
+      expect(vue.max).toBeLessThanOrEqual(base.max);
+      expect(vue.max - vue.min).toBeLessThanOrEqual(base.max - base.min);
+      expect(vue.min).toBeLessThanOrEqual(vue.max);
+    }
+  });
+});
+
+describe("stepZoom", () => {
+  it("propose les cinq paliers du zoom des touches", () => {
+    expect(ZOOM_STEPS).toEqual([1, 1.5, 2, 2.5, 3]);
+  });
+
+  it("monte et descend les paliers sans jamais les dépasser", () => {
+    expect(stepZoom(1, -1)).toBe(1);
+    expect(stepZoom(1, 1)).toBe(1.5);
+    expect(stepZoom(2, 1)).toBe(2.5);
+    expect(stepZoom(2.5, -1)).toBe(2);
+    expect(stepZoom(3, 1)).toBe(3);
+    expect(stepZoom(3, -1)).toBe(2.5);
+  });
+
+  it("retombe sur un palier connu depuis une valeur quelconque", () => {
+    expect(stepZoom(1.7, 1)).toBe(2);
+    expect(stepZoom(Number.NaN, 1)).toBe(1.5);
+    expect(stepZoom(0, 1)).toBe(1.5);
+    expect(stepZoom(Number.POSITIVE_INFINITY, -1)).toBe(1);
   });
 });
