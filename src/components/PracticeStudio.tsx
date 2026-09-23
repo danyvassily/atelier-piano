@@ -11,6 +11,7 @@ import {
   Metronome as MetronomeIcon,
   Microphone,
   Pause,
+  PianoKeys,
   Play,
   Repeat,
   Sparkle,
@@ -33,6 +34,7 @@ import { ScoreViewer, PdfTrackedView } from "./ScoreViewer";
 import { SourcePdfPanel } from "./SourcePdfPanel";
 import { AudiverisGuide } from "./AudiverisGuide";
 import { YouTubeLesson } from "./YouTubeLesson";
+import { SynthesiaPractice } from "./SynthesiaPractice";
 
 interface PracticeStudioProps {
   score: ScoreDocument;
@@ -95,6 +97,8 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
   const [pdfTab, setPdfTab] = useState(false);
   const [pdfPageCount, setPdfPageCount] = useState(0);
   const [naming, setNaming] = useState<NoteNaming>(() => localStorage.getItem("atelier-note-naming") === "letters" ? "letters" : "french");
+  // Mode d’affichage : parcours guidé (historique) ou piano-roll « Mode Synthesia ».
+  const [pianoRoll, setPianoRoll] = useState(false);
 
   const scorePlayer = useRef(new ScorePlayer());
   const pitchDetector = useRef(new PianoPitchDetector());
@@ -276,6 +280,63 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
     }
     window.setTimeout(() => setNoteStatus("idle"), 360);
   }, [markStageComplete]);
+
+  // Mode Synthesia : les statistiques de la section alimentent le même état que
+  // le parcours guidé, et la meilleure précision est mémorisée par étape.
+  const handleSynthesiaStats = useCallback((nextStats: PracticeStats) => {
+    statsRef.current = nextStats;
+    setStats(nextStats);
+  }, []);
+
+  const handleSynthesiaBestAccuracy = useCallback((accuracy: number) => {
+    if (!stage) return;
+    const rounded = Math.max(0, Math.min(100, Math.round(accuracy)));
+    setCompletedStageIds((current) => (current.includes(stage.id) ? current : [...current, stage.id]));
+    void scoreStorage.getProgress(score.id).then((progress) => {
+      const completed = progress?.completedStageIds || [];
+      void scoreStorage.putProgress({
+        scoreId: score.id,
+        stageId: stage.id,
+        completedStageIds: completed.includes(stage.id) ? completed : [...completed, stage.id],
+        bestAccuracy: Math.max(progress?.bestAccuracy || 0, rounded),
+        errorsByMeasure: statsRef.current.errorsByMeasure,
+      });
+    });
+  }, [score.id, stage]);
+
+  // Étape suivante du parcours guidé, proposée à la fin d’une section en piano-roll.
+  const nextStage = useMemo(() => {
+    if (!stage) return null;
+    const index = stages.findIndex((item) => item.id === stage.id);
+    return index >= 0 && index + 1 < stages.length ? stages[index + 1] : null;
+  }, [stages, stage]);
+
+  const studioHeader = (
+    <header className="studio-header">
+      <div><p>{score.composer}</p><h1>{score.title}</h1></div>
+      <div className="header-actions">
+        <div className="score-metadata"><span>{score.timeSignature[0]}/{score.timeSignature[1]}</span><span>{score.bpm} BPM</span><span>{score.measureCount} mesures</span></div>
+        <button className="secondary-button compact-action" type="button" onClick={() => setExportOpen(true)}><DownloadSimple size={18} /> Exporter</button>
+      </div>
+    </header>
+  );
+
+  // Sélecteur de mode : présent dans les deux modes, pour pouvoir revenir au parcours.
+  const modeSwitch = (
+    <div className="mode-switch" role="tablist" aria-label="Mode de pratique">
+      <button type="button" role="tab" aria-selected={!pianoRoll} className={pianoRoll ? "" : "is-on"} onClick={() => setPianoRoll(false)}>
+        <Sparkle size={18} weight="fill" /> Parcours guidé
+      </button>
+      <button type="button" role="tab" aria-selected={pianoRoll} className={pianoRoll ? "is-on" : ""} onClick={() => setPianoRoll(true)}>
+        <PianoKeys size={18} weight="fill" /> Piano-roll — Mode Synthesia
+      </button>
+      <p className="mode-switch-hint">
+        {pianoRoll
+          ? "Les notes tombent vers la ligne de frappe : jouez-les au clavier MIDI, au clavier d’ordinateur ou au doigt."
+          : "Parcours guidé historique : écoute, main droite, main gauche, mains ensemble, puis interprétation au microphone."}
+      </p>
+    </div>
+  );
 
   const stopSession = useCallback(() => {
     sessionGenerationRef.current += 1;
@@ -473,19 +534,41 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
   const micActive = mode === "requesting" || mode === "practicing" || mode === "calibrating" || mode === "paused" && pausedFrom === "practicing";
   const canPausePractice = mode === "practicing";
 
+  // Piano-roll « Mode Synthesia » : même rail d’étapes, même en-tête, mais la
+  // pratique se fait sur les notes qui tombent au lieu du microphone.
+  if (pianoRoll) {
+    return (
+      <>
+        <main className="studio-layout">
+          <LessonRail stages={stages} currentId={stage.id} completedIds={completedStageIds} onSelect={selectStage} />
+          <section className="practice-stage">
+            {studioHeader}
+            {modeSwitch}
+            <SynthesiaPractice
+              key={`synthesia-${stage.id}`}
+              score={score}
+              stage={stage}
+              naming={naming}
+              onNamingChange={setNaming}
+              onStats={handleSynthesiaStats}
+              onBestAccuracy={handleSynthesiaBestAccuracy}
+              onContinue={nextStage ? () => selectStage(nextStage) : undefined}
+            />
+          </section>
+        </main>
+        <ExportDialog open={exportOpen} score={score} onClose={() => setExportOpen(false)} />
+      </>
+    );
+  }
+
   return (
     <>
       <main className="studio-layout">
         <LessonRail stages={stages} currentId={stage.id} completedIds={completedStageIds} onSelect={selectStage} />
 
         <section className="practice-stage">
-          <header className="studio-header">
-            <div><p>{score.composer}</p><h1>{score.title}</h1></div>
-            <div className="header-actions">
-              <div className="score-metadata"><span>{score.timeSignature[0]}/{score.timeSignature[1]}</span><span>{score.bpm} BPM</span><span>{score.measureCount} mesures</span></div>
-              <button className="secondary-button compact-action" type="button" onClick={() => setExportOpen(true)}><DownloadSimple size={18} /> Exporter</button>
-            </div>
-          </header>
+          {studioHeader}
+          {modeSwitch}
 
           {score.transcription && (
             <div className="transcription-banner"><Sparkle size={21} weight="fill" /><div><strong>Brouillon transcrit localement</strong><span>{score.notes.length} notes · confiance moyenne {Math.round(score.transcription.averageConfidence * 100)} %. Vérifiez tempo, rythme et mains avant de l’utiliser comme partition définitive.</span></div></div>

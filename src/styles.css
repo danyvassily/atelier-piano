@@ -2519,3 +2519,995 @@ input:focus-visible {
     text-align: center;
   }
 }
+
+/* ================================================================== */
+/* Mode Synthesia : scène piano-roll, transport, HUD et bilan        */
+/* ================================================================== */
+
+/* Sélecteur de mode, au-dessus de l’atelier. */
+
+.mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.mode-switch button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mode-switch button:hover {
+  background: var(--surface-soft);
+}
+
+.mode-switch button.is-on {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: var(--surface-raised);
+  color: var(--accent-strong);
+  box-shadow: 0 6px 18px rgb(25 32 28 / 0.06);
+}
+
+.mode-switch-hint {
+  flex: 1 1 220px;
+  margin: 0 0 0 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+/* Scène : le piano-roll reste sombre dans les deux thèmes (comme son canvas). */
+
+.synthesia {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 0 6px;
+  /* Accent du mode : cyan #4FC3F7, défini ICI et nulle part ailleurs — le thème
+     global garde son accent, seuls les contrôles du mode Synthesia passent en
+     cyan. `--synthesia-accent-ink` est la teinte de texte, assombrie en thème
+     clair pour rester lisible, cyan pur sur les fonds sombres du mode. */
+  --synthesia-accent: #4fc3f7;
+  --synthesia-accent-line: rgb(79 195 247 / 0.62);
+  --synthesia-accent-soft: rgb(79 195 247 / 0.16);
+  --synthesia-accent-ink: #10718f;
+  --synthesia-accent-glow: rgb(79 195 247 / 0.22);
+}
+
+:root[data-theme="dark"] .synthesia,
+.synthesia.immersive,
+.synthesia.is-fullscreen {
+  --synthesia-accent-ink: #4fc3f7;
+}
+
+/* Transport + HUD : un seul bloc, estompé d’un coup pendant la lecture. */
+
+.synthesia-chrome {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  transition: opacity 420ms ease, transform 420ms ease;
+}
+
+.synthesia-chrome.is-idle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Glyphe ⛶ du bouton plein écran, aligné sur les icônes Phosphor. */
+
+.synthesia-fullscreen-glyph {
+  display: inline-block;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.synthesia button,
+.synthesia input,
+.synthesia output {
+  font-family: inherit;
+}
+
+.synthesia button:focus-visible,
+.synthesia input:focus-visible {
+  /* Anneau de focus du mode : cyan, comme ses états actifs. */
+  outline: 2px solid var(--synthesia-accent);
+  outline-offset: 2px;
+}
+
+.mode-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Transport */
+
+.synthesia-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.synthesia-bar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.synthesia-bar-toggles {
+  margin-left: auto;
+}
+
+.synthesia-bar button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.synthesia-bar button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-soft);
+}
+
+/* États actifs des contrôles du mode : cyan #4FC3F7 (périmètre .synthesia). */
+
+.synthesia-bar button.is-on,
+.synthesia-bar-toggles button.is-on {
+  border-color: var(--synthesia-accent-line);
+  background: var(--synthesia-accent-soft);
+  color: var(--synthesia-accent-ink);
+  box-shadow: inset 0 0 0 1px rgb(79 195 247 / 0.22), 0 6px 16px var(--synthesia-accent-glow);
+}
+
+.synthesia-bar button.is-on .synthesia-fullscreen-glyph {
+  color: var(--synthesia-accent);
+}
+
+.synthesia-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.synthesia-play {
+  border-color: var(--accent-strong);
+  background: var(--accent);
+  color: #fffaf7;
+}
+
+.synthesia-bar .synthesia-play {
+  min-width: 104px;
+  justify-content: center;
+  font-weight: 740;
+}
+
+.synthesia-bar .synthesia-play:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.synthesia-tempo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 690;
+}
+
+.synthesia-tempo input[type="range"] {
+  width: clamp(96px, 13vw, 168px);
+  /* Curseur de tempo : cyan du mode. */
+  accent-color: var(--synthesia-accent);
+}
+
+.synthesia-tempo output {
+  min-width: 104px;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.synthesia-hands {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+}
+
+.synthesia-hands button {
+  min-height: 34px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.synthesia-hands button.is-on {
+  border-color: var(--synthesia-accent-line);
+  background: var(--synthesia-accent-soft);
+  color: var(--synthesia-accent-ink);
+}
+
+.synthesia-loop {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 680;
+}
+
+.synthesia-loop label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.synthesia-loop input {
+  width: 68px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.synthesia-loop-hint {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+/* HUD : précision, combo, erreurs, mesure en cours */
+
+.synthesia-hud {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.synthesia-hud-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+  gap: 6px 10px;
+}
+
+.synthesia-hud-grid div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.synthesia-hud-grid span {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 690;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.synthesia-hud-grid strong {
+  font-size: 0.98rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* « Meilleur combo » tient sur une ligne : libellé insécable, largeur doublée. */
+
+.synthesia-hud-best {
+  grid-column: span 2;
+}
+
+.synthesia-hud-best span,
+.synthesia-hud-best strong {
+  white-space: nowrap;
+}
+
+.synthesia-hud-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 680;
+  line-height: 1.4;
+}
+
+/* Scène piano-roll */
+
+/* Scène piano-roll : noir pur, comme le canvas qu’elle contient. */
+
+.synthesia-scene {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #000 55%, var(--line-strong));
+  border-radius: var(--radius-panel);
+  background: #000;
+  box-shadow: 0 22px 60px rgb(0 0 0 / 0.34);
+}
+
+.synthesia-canvas {
+  display: block;
+}
+
+/* Retour visuel à la ligne de frappe : sa position vient du canvas
+   (`--hit-line`, calculée par SynthesiaPractice selon la hauteur du piano-roll). */
+
+.synthesia-flash {
+  position: absolute;
+  inset-inline: 0;
+  top: var(--hit-line, 71.5%);
+  height: 44px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.synthesia-flash.is-perfect {
+  background: linear-gradient(to bottom, rgb(63 185 80 / 0), rgb(63 185 80 / 0.38), rgb(63 185 80 / 0));
+  animation: synthesia-flash 520ms ease-out;
+}
+
+.synthesia-flash.is-good {
+  background: linear-gradient(to bottom, rgb(88 166 255 / 0), rgb(88 166 255 / 0.34), rgb(88 166 255 / 0));
+  animation: synthesia-flash 520ms ease-out;
+}
+
+.synthesia-flash.is-wrong,
+.synthesia-flash.is-miss {
+  background: linear-gradient(to bottom, rgb(229 72 77 / 0), rgb(229 72 77 / 0.4), rgb(229 72 77 / 0));
+  animation: synthesia-flash 520ms ease-out;
+}
+
+@keyframes synthesia-flash {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) scaleY(0.6);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-50%) scaleY(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scaleY(1.15);
+  }
+}
+
+.synthesia-feedback {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgb(9 12 11 / 0.78);
+  color: #f0f1ed;
+  font-size: 0.72rem;
+  font-weight: 720;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  animation: synthesia-feedback 1200ms ease-out forwards;
+}
+
+.synthesia-feedback.is-perfect,
+.synthesia-feedback.is-good {
+  color: #8ee0a8;
+}
+
+.synthesia-feedback.is-wrong,
+.synthesia-feedback.is-miss {
+  color: #ffb0aa;
+}
+
+@keyframes synthesia-feedback {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  75% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.synthesia-scene-empty {
+  position: absolute;
+  inset-inline: 24px;
+  top: 42%;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgb(240 241 237 / 0.18);
+  border-radius: var(--radius-control);
+  background: rgb(9 12 11 / 0.72);
+  color: #d8dbd5;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Bilan de fin de section */
+
+.synthesia-results {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--success) 34%, var(--line));
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--success-soft) 62%, var(--surface-raised));
+}
+
+.synthesia-results header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  color: var(--success);
+}
+
+.synthesia-results header strong,
+.synthesia-results header span {
+  display: block;
+}
+
+.synthesia-results header strong {
+  font-size: 0.9rem;
+}
+
+.synthesia-results header span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.synthesia-results-measures strong {
+  font-size: 0.74rem;
+}
+
+.synthesia-results-measures ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.synthesia-results-measures li {
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--line));
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.synthesia-results-clean,
+.synthesia-results-best {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.synthesia-results-best {
+  font-weight: 700;
+}
+
+.synthesia-results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.synthesia-results-actions button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.synthesia-results-actions .synthesia-play {
+  border-color: var(--accent-strong);
+  background: var(--accent);
+  color: #fffaf7;
+}
+
+.synthesia-results-actions button:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-soft);
+}
+
+.synthesia-results-actions .synthesia-play:hover {
+  background: var(--accent-strong);
+}
+
+/* Périphériques : clavier MIDI, aide du clavier d’ordinateur */
+
+.synthesia-devices {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.synthesia-devices > button {
+  justify-self: start;
+}
+
+.synthesia-device-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.synthesia-device-state.is-connected {
+  color: var(--success);
+}
+
+.synthesia-device-state.is-error {
+  color: var(--danger);
+}
+
+.synthesia-key-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.synthesia-error {
+  margin-top: 0;
+}
+
+/* État vide : aucune note jouable */
+
+.synthesia-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 34px 22px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--muted);
+  text-align: center;
+}
+
+.synthesia-empty-state strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.synthesia-empty-state p {
+  max-width: 46ch;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+/* ================================================================== */
+/* Plein écran natif et mode immersif : la scène occupe le viewport   */
+/* ================================================================== */
+
+/* `is-fullscreen` suit l’API Fullscreen du navigateur ; `immersive` est le repli
+   CSS quand elle n’existe pas (iPhone, WebView) : même scène, fixée au viewport,
+   sur fond noir, barre de transport et HUD en surimpression. */
+
+.synthesia.immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overscroll-behavior: none;
+}
+
+.synthesia.is-fullscreen,
+.synthesia.immersive {
+  display: block;
+  padding: 0;
+  background: #000;
+  overflow: hidden;
+}
+
+/* La barre de transport et le HUD flottent au-dessus du piano-roll, qui garde
+   toute la hauteur de l’écran (le clavier n’est jamais recouvert). */
+
+.synthesia.is-fullscreen .synthesia-chrome,
+.synthesia.immersive .synthesia-chrome {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 3;
+  gap: 8px;
+}
+
+.synthesia.is-fullscreen .synthesia-chrome.is-idle,
+.synthesia.immersive .synthesia-chrome.is-idle {
+  transform: translateY(-14px);
+}
+
+/* Le canvas est dimensionné par SynthesiaPractice (place visible sous la scène) :
+   la scène s’y cale exactement, la ligne de frappe reste alignée. */
+
+.synthesia.is-fullscreen .synthesia-scene,
+.synthesia.immersive .synthesia-scene {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  box-shadow: none;
+}
+
+.synthesia.is-fullscreen .synthesia-results,
+.synthesia.immersive .synthesia-results {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 26px 70px rgb(0 0 0 / 0.6);
+}
+
+.synthesia.is-fullscreen .synthesia-error,
+.synthesia.immersive .synthesia-error {
+  position: absolute;
+  z-index: 5;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  margin: 0;
+}
+
+/* Le panneau des périphériques est un réglage : il reste hors de la scène. */
+
+.synthesia.is-fullscreen .synthesia-devices,
+.synthesia.immersive .synthesia-devices {
+  display: none;
+}
+
+/* Sur fond noir, le transport et le HUD passent en verre fumé, quel que soit le thème. */
+
+.synthesia.is-fullscreen .synthesia-bar,
+.synthesia.immersive .synthesia-bar,
+.synthesia.is-fullscreen .synthesia-hud,
+.synthesia.immersive .synthesia-hud {
+  border-color: rgb(255 255 255 / 0.14);
+  background: rgb(9 12 15 / 0.78);
+  color: #e8edf2;
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: 0 18px 46px rgb(0 0 0 / 0.45);
+}
+
+.synthesia.is-fullscreen .synthesia-bar button,
+.synthesia.immersive .synthesia-bar button {
+  border-color: rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.08);
+  color: #e8edf2;
+}
+
+.synthesia.is-fullscreen .synthesia-bar button:hover:not(:disabled),
+.synthesia.immersive .synthesia-bar button:hover:not(:disabled) {
+  border-color: rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.14);
+}
+
+.synthesia.is-fullscreen .synthesia-bar button.is-on,
+.synthesia.immersive .synthesia-bar button.is-on {
+  border-color: rgb(79 195 247 / 0.5);
+  background: rgb(79 195 247 / 0.18);
+  color: #cdeafd;
+}
+
+.synthesia.is-fullscreen .synthesia-bar button.synthesia-play,
+.synthesia.immersive .synthesia-bar button.synthesia-play {
+  border-color: var(--accent-strong);
+  background: var(--accent);
+  color: #fffaf7;
+}
+
+.synthesia.is-fullscreen .synthesia-tempo,
+.synthesia.immersive .synthesia-tempo {
+  color: #a9b4bf;
+}
+
+.synthesia.is-fullscreen .synthesia-tempo output,
+.synthesia.immersive .synthesia-tempo output {
+  color: #f2f6f9;
+}
+
+.synthesia.is-fullscreen .synthesia-hands,
+.synthesia.immersive .synthesia-hands {
+  border-color: rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.06);
+}
+
+.synthesia.is-fullscreen .synthesia-hands button,
+.synthesia.immersive .synthesia-hands button {
+  border-color: transparent;
+  background: transparent;
+  color: #b9c4cd;
+}
+
+.synthesia.is-fullscreen .synthesia-hands button.is-on,
+.synthesia.immersive .synthesia-hands button.is-on {
+  border-color: rgb(79 195 247 / 0.4);
+  background: rgb(255 255 255 / 0.14);
+  color: #dff1fd;
+}
+
+.synthesia.is-fullscreen .synthesia-loop,
+.synthesia.immersive .synthesia-loop {
+  border-color: rgb(255 255 255 / 0.2);
+  background: rgb(255 255 255 / 0.05);
+  color: #a9b4bf;
+}
+
+.synthesia.is-fullscreen .synthesia-loop input,
+.synthesia.immersive .synthesia-loop input {
+  border-color: rgb(255 255 255 / 0.2);
+  background: rgb(18 21 24 / 0.92);
+  color: #eef2f6;
+}
+
+.synthesia.is-fullscreen .synthesia-hud-grid span,
+.synthesia.immersive .synthesia-hud-grid span {
+  color: #9fb0bd;
+}
+
+.synthesia.is-fullscreen .synthesia-hud-grid strong,
+.synthesia.immersive .synthesia-hud-grid strong {
+  color: #f2f6f9;
+}
+
+.synthesia.is-fullscreen .synthesia-hud-state,
+.synthesia.immersive .synthesia-hud-state {
+  color: #c3ccd5;
+}
+
+/* Le panneau de statistiques s’efface pendant la lecture : le chrome flotte en
+   surimpression et le piano-roll reste seul en scène. Il revient dès que le
+   chrome est révélé (interaction) ou à la fin de la section. */
+
+.synthesia.is-fullscreen .synthesia-hud.is-quiet,
+.synthesia.immersive .synthesia-hud.is-quiet {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 300ms ease;
+}
+
+@media (max-width: 920px) {
+  .synthesia-bar-toggles {
+    margin-left: 0;
+  }
+
+  .synthesia-tempo output {
+    min-width: 92px;
+  }
+}
+
+/* Mobile : plus de grands vides — les contrôles défilent sur une ligne et les
+   statistiques se compactent, pour que le piano-roll garde l’écran. */
+
+@media (max-width: 680px) {
+  .mode-switch-hint {
+    display: none;
+  }
+
+  .synthesia {
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+
+  .synthesia-chrome {
+    gap: 8px;
+  }
+
+  .synthesia-bar {
+    gap: 6px;
+    padding: 8px 9px;
+  }
+
+  /* Les groupes de contrôles deviennent des rangées défilantes : la barre ne
+     mange plus la moitié de l’écran en s’empilant. */
+  .synthesia-bar-group {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .synthesia-bar-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .synthesia-bar-group > button,
+  .synthesia-bar-group > .synthesia-hands {
+    flex: 0 0 auto;
+  }
+
+  .synthesia-bar button {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 0.7rem;
+  }
+
+  .synthesia-tempo {
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .synthesia-tempo input[type="range"] {
+    width: 96px;
+  }
+
+  .synthesia-tempo output {
+    min-width: 76px;
+    font-size: 0.68rem;
+  }
+
+  .synthesia-loop {
+    padding: 7px 9px;
+  }
+
+  .synthesia-loop-hint {
+    margin-left: 0;
+  }
+
+  /* Statistiques compactes : « MEILLEUR COMBO » tient sur une ligne. */
+  .synthesia-hud {
+    gap: 5px;
+    padding: 8px 10px;
+  }
+
+  .synthesia-hud-grid {
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+    gap: 4px 8px;
+  }
+
+  .synthesia-hud-grid span {
+    font-size: 0.54rem;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .synthesia-hud-best span {
+    font-size: 0.5rem;
+  }
+
+  .synthesia-hud-grid strong {
+    font-size: 0.88rem;
+  }
+
+  .synthesia-hud-state {
+    font-size: 0.68rem;
+  }
+
+  /* Sur un téléphone, il n’y a pas de clavier d’ordinateur : l’aide disparaît. */
+  .synthesia-key-hint {
+    display: none;
+  }
+
+  .synthesia-devices {
+    gap: 6px;
+    padding: 10px 11px;
+  }
+
+  .synthesia-scene-empty {
+    inset-inline: 12px;
+  }
+
+  .synthesia.is-fullscreen .synthesia-chrome,
+  .synthesia.immersive .synthesia-chrome {
+    top: 6px;
+    left: 6px;
+    right: 6px;
+  }
+
+  .synthesia.is-fullscreen .synthesia-error,
+  .synthesia.immersive .synthesia-error {
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .synthesia-flash,
+  .synthesia-feedback {
+    animation: none;
+  }
+
+  .synthesia-chrome {
+    transition: none;
+  }
+}

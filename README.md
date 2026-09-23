@@ -24,6 +24,7 @@ Atelier Piano est une application web installable qui transforme une partition o
 - liaison d’un PDF original à une partition MusicXML ou MIDI, avec suivi de la mesure en cours sur le document ;
 - guide « compagnon Audiveris » : import du MusicXML reconnu optiquement et aide à la correction des mesures douteuses ;
 - interface iPhone, iPad et ordinateur, en thème clair ou sombre ;
+- mode Synthesia en piano-roll : notes qui tombent, clavier MIDI, clavier d’ordinateur, mode attente et score en direct ;
 - installation comme application web depuis l’écran d’accueil.
 
 La partition d’exemple « Premiers pas en do » est ajoutée automatiquement au premier lancement. Les calculs audio sont réalisés sur l’appareil et les fichiers ne sont pas envoyés à un serveur.
@@ -61,6 +62,36 @@ L’accès au microphone par `getUserMedia()` exige une adresse HTTPS, sauf sur 
 
 Si le micro reste en attente, vérifiez dans Réglages iPadOS > Safari > Microphone que l’accès est autorisé, puis fermez et rouvrez l’application web. Après une nouvelle mise en ligne, la PWA recharge automatiquement sa dernière version ; si une ancienne version reste affichée, quittez-la complètement puis relancez-la depuis l’écran d’accueil.
 
+## Mode Synthesia (piano-roll)
+
+Le sélecteur en haut du pupitre propose deux façons de travailler la même partition :
+
+- **Parcours guidé** (par défaut) : écoute, main droite, main gauche, mains ensemble, puis interprétation au microphone ;
+- **Piano-roll — Mode Synthesia** : les notes de la section tombent vers la ligne de frappe, juste au-dessus du clavier dessiné.
+
+### Ce que fait le mode Synthesia
+
+- **notes qui tombent** : chaque note descend vers la ligne de frappe et l’atteint exactement au moment où elle doit être jouée ;
+- **clavier MIDI** : bouton « Connecter un clavier MIDI » (Chrome, Edge ou Opera) ; les appareils branchés ou retirés à chaud sont suivis automatiquement ;
+- **clavier d’ordinateur** : rangées `Z S X D C V G B H N J M` (grave) et `Q W E R T Y U I O P` (aigu), base Do4, décalage d’octave avec ← et → ;
+- **clavier tactile** : sur iPad, touchez directement les touches du clavier dessiné ;
+- **mode attente** : le temps s’arrête sur chaque note non jouée et repart dès que la bonne touche est enfoncée ;
+- **score en direct** : précision, combo, meilleur combo, notes justes, erreurs, notes oubliées et mesure courante ;
+- **bilan de fin de section** : précision, combo maximum et erreurs par mesure (3 mesures à revoir), avec « Rejouer la section » et « Continuer » vers l’étape suivante ;
+- **solfège coloré** : une couleur par classe de hauteur, avec affichage optionnel des noms de notes (Do Ré Mi ou C D E) ;
+- **boucle A–B par mesures**, **tempo de 25 % à 150 %**, **métronome** et **écoute de la section** avant de la jouer.
+
+### Utilisation
+
+1. Ouvrez une partition : la démo « Premiers pas en do » convient parfaitement.
+2. Choisissez « Piano-roll — Mode Synthesia » en haut du pupitre, puis une étape dans le rail de gauche.
+3. Réglez le tempo et la main (les deux, droite, gauche) ; laissez « Mode attente » actif pour débuter.
+4. Jouez au clavier MIDI, au clavier d’ordinateur ou au doigt sur l’écran.
+5. Raccourcis : `Espace` lecture/pause, `R` recommencer, `←` et `→` pour changer d’octave au clavier d’ordinateur.
+6. À la fin de la section, lisez le bilan puis rejouez la section ou passez à l’étape suivante.
+
+La meilleure précision de chaque étape est mémorisée sur l’appareil (progression IndexedDB du parcours, doublée d’une copie locale pour le piano-roll), comme pour le mode guidé.
+
 ## Déploiement gratuit
 
 L’application est statique. Elle peut être hébergée gratuitement sur Cloudflare Pages, Netlify, Vercel ou GitHub Pages.
@@ -83,6 +114,7 @@ src/
   data/               Sauvegarde IndexedDB
   media/              Validation des liens et horodatages YouTube
   music/              Imports, transcription, exports et génération des cours
+  practice/           Moteur de pratique : tempo, piano-roll, transport, boucle et score
   App.tsx              Navigation principale
   demo.ts              Partition libre de démonstration
 public/
@@ -118,7 +150,7 @@ Un PDF de partition contient généralement des pages dessinées, pas une liste 
 
 ### MIDI dans Safari
 
-La version actuelle privilégie le microphone, car l’API Web MIDI n’est pas prise en charge par Safari sur iPhone et iPad. Un futur connecteur natif ne serait possible qu’en emballant l’application pour l’App Store, ce qui ne correspond pas au choix actuel.
+Le mode Synthesia utilise l’API Web MIDI quand le navigateur l’expose (Chrome, Edge et Opera sur ordinateur). Safari sur iPhone et iPad ne la propose pas : dans ce cas le piano-roll reste jouable au clavier d’ordinateur et au doigt sur le clavier tactile de l’écran, et le parcours guidé continue de tout valider au microphone. Un connecteur MIDI natif supposerait d’emballer l’application pour l’App Store, ce qui ne correspond pas au choix actuel.
 
 ## Confidentialité
 
