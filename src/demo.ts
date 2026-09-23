@@ -1,3 +1,7 @@
+import type { ScoreDocument } from "./types";
+
+export const BUNDLED_DEMO_ID = "atelier-demo-first-steps";
+
 export const DEMO_MUSIC_XML = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
@@ -66,3 +70,7 @@ export const DEMO_MUSIC_XML = `<?xml version="1.0" encoding="UTF-8" standalone="
     </measure>
   </part>
 </score-partwise>`;
+
+export function isBundledDemo(score: Pick<ScoreDocument, "id" | "rawText">): boolean {
+  return score.id === BUNDLED_DEMO_ID || score.rawText === DEMO_MUSIC_XML;
+}

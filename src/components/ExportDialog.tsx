@@ -25,6 +25,7 @@ function download(blob: Blob, fileName: string) {
 
 export function ExportDialog({ open, score, onClose }: ExportDialogProps) {
   const previewRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [previewError, setPreviewError] = useState("");
   const abc = useMemo(() => scoreToAbc(score), [score]);
   const baseName = safeFileName(score.title);
@@ -40,11 +41,27 @@ export function ExportDialog({ open, score, onClose }: ExportDialogProps) {
     return () => container.replaceChildren();
   }, [abc, open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      previouslyFocused?.focus();
+    };
+  }, [onClose, open]);
+
   if (!open) return null;
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title">
-        <button className="icon-button dialog-close" type="button" onClick={onClose} aria-label="Fermer"><X size={20} /></button>
+        <button ref={closeButtonRef} className="icon-button dialog-close" type="button" onClick={onClose} aria-label="Fermer"><X size={20} /></button>
         <div className="dialog-heading"><span className="dialog-icon"><DownloadSimple size={24} /></span><div><h2 id="export-title">Exporter la partition</h2><p>Les fichiers sont créés sur cet appareil.</p></div></div>
         <div className="export-actions">
           <button type="button" onClick={() => download(new Blob([scoreToMusicXml(score)], { type: "application/vnd.recordare.musicxml+xml" }), `${baseName}.musicxml`)}><MusicNotes size={22} /><span><strong>MusicXML</strong><small>Partition structurée</small></span></button>

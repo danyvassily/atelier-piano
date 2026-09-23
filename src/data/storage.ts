@@ -36,4 +36,5 @@ export const scoreStorage = {
   getProgress: (scoreId: string) => transaction<StoredProgress | undefined>("progress", "readonly", (store) => store.get(scoreId)),
   listProgress: () => transaction<StoredProgress[]>("progress", "readonly", (store) => store.getAll()),
   putProgress: (progress: StoredProgress) => transaction<IDBValidKey>("progress", "readwrite", (store) => store.put(progress)),
+  removeProgress: (scoreId: string) => transaction<undefined>("progress", "readwrite", (store) => store.delete(scoreId) as IDBRequest<undefined>),
 };

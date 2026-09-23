@@ -471,7 +471,7 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
 
   if (!stage) return null;
   const micActive = mode === "requesting" || mode === "practicing" || mode === "calibrating" || mode === "paused" && pausedFrom === "practicing";
-  const canPause = mode === "listening" || mode === "practicing";
+  const canPausePractice = mode === "practicing";
 
   return (
     <>
@@ -605,9 +605,9 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
 
           <footer className="transport-bar">
             <button className="listen-button" type="button" onClick={() => mode === "listening" ? pauseSession() : mode === "paused" && pausedFrom === "listening" ? resumeSession() : void listen()}>{mode === "listening" ? <Pause size={20} weight="fill" /> : mode === "paused" && pausedFrom === "listening" ? <Play size={20} weight="fill" /> : <Ear size={20} />}{mode === "listening" ? "Pause" : mode === "paused" && pausedFrom === "listening" ? "Reprendre" : "Écouter"}</button>
-            {canPause
+            {canPausePractice
               ? <button className="practice-button is-pause" type="button" onClick={pauseSession}><Pause size={20} weight="fill" /> Pause</button>
-              : mode === "paused"
+              : mode === "paused" && pausedFrom === "practicing"
                 ? <button className="practice-button" type="button" onClick={resumeSession}><Play size={20} weight="fill" /> Reprendre</button>
                 : <button className="practice-button" type="button" onClick={() => mode === "calibrating" || mode === "requesting" ? stopSession() : void practice()}>{mode === "calibrating" || mode === "requesting" ? <Stop size={20} weight="fill" /> : <Microphone size={20} weight="fill" />}{mode === "calibrating" || mode === "requesting" ? "Annuler" : "Jouer au piano"}</button>}
             {mode === "requesting" || mode === "practicing" || mode === "calibrating" || mode === "paused" ? <button className="listen-button" type="button" onClick={stopSession} aria-label="Arrêter la session"><Stop size={18} weight="fill" /></button> : null}

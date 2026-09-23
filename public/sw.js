@@ -1,5 +1,7 @@
-const CACHE = "atelier-piano-v4";
-const SHELL = ["/", "/manifest.webmanifest", "/piano-mark.svg"];
+const CACHE = "atelier-piano-v5";
+const BASE = self.registration.scope;
+const SHELL_URL = new URL("./", BASE).toString();
+const SHELL = [SHELL_URL, new URL("manifest.webmanifest", BASE).toString(), new URL("piano-mark.svg", BASE).toString()];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -25,11 +27,11 @@ self.addEventListener("fetch", (event) => {
         .then((response) => {
           if (response.ok) {
             const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put("/", copy));
+            caches.open(CACHE).then((cache) => cache.put(SHELL_URL, copy));
           }
           return response;
         })
-        .catch(() => caches.match("/")),
+        .catch(() => caches.match(SHELL_URL)),
     );
     return;
   }
@@ -42,6 +44,6 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))),
+      .catch(() => caches.match(event.request).then((cached) => cached || Response.error())),
   );
 });

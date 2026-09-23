@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileArrowUp, FilePdf, FilmSlate, MusicNotes, Waveform, X } from "@phosphor-icons/react";
 import type { ScoreDocument } from "../types";
 import { importScore, isTranscribableMedia } from "../music/importScore";
@@ -14,6 +14,7 @@ const LINKABLE_EXTENSIONS = new Set(["xml", "musicxml", "mxl", "mid", "midi"]);
 
 export function ImportDialog({ open, pdfOptions, onClose, onImported }: ImportDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -25,9 +26,7 @@ export function ImportDialog({ open, pdfOptions, onClose, onImported }: ImportDi
   const [transcriptionBpm, setTranscriptionBpm] = useState(80);
   const [progress, setProgress] = useState(0);
 
-  if (!open) return null;
-
-  const resetAndClose = () => {
+  const resetAndClose = useCallback(() => {
     setMediaFile(null);
     setPendingScoreFile(null);
     setAudiverisFlag(false);
@@ -36,7 +35,27 @@ export function ImportDialog({ open, pdfOptions, onClose, onImported }: ImportDi
     setProgress(0);
     setError("");
     onClose();
-  };
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || busy) return;
+      event.preventDefault();
+      resetAndClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [busy, open, resetAndClose]);
+
+  if (!open) return null;
 
   const processFile = async (file?: File) => {
     if (!file) return;
@@ -110,9 +129,9 @@ export function ImportDialog({ open, pdfOptions, onClose, onImported }: ImportDi
   };
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !busy && resetAndClose()}>
       <section className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
-        <button className="icon-button dialog-close" type="button" onClick={resetAndClose} aria-label="Fermer">
+        <button ref={closeButtonRef} className="icon-button dialog-close" type="button" onClick={resetAndClose} aria-label="Fermer" disabled={busy}>
           <X size={20} weight="bold" />
         </button>
         <div className="dialog-heading">

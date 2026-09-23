@@ -6,7 +6,7 @@ import { ImportDialog } from "./components/ImportDialog";
 import { PracticeStudio } from "./components/PracticeStudio";
 import { scoreStorage } from "./data/storage";
 import { parseMusicXml } from "./music/musicXml";
-import { DEMO_MUSIC_XML } from "./demo";
+import { BUNDLED_DEMO_ID, DEMO_MUSIC_XML, isBundledDemo } from "./demo";
 import { createBackup, restoreBackup } from "./data/backup";
 
 type Theme = "light" | "dark";
@@ -42,10 +42,10 @@ export default function App() {
       .list()
       .then(async (storedScores) => {
         let ordered = storedScores.sort((a, b) => b.importedAt.localeCompare(a.importedAt));
-        const storedDemos = ordered.filter((score) => score.composer === "Exercice Atelier Piano");
+        const storedDemos = ordered.filter(isBundledDemo);
         if (storedDemos.length) {
           const refreshedDemo = parseMusicXml(DEMO_MUSIC_XML, "Premiers pas en do.musicxml");
-          refreshedDemo.id = "atelier-demo-first-steps";
+          refreshedDemo.id = BUNDLED_DEMO_ID;
           refreshedDemo.importedAt = storedDemos[0].importedAt;
           await scoreStorage.put(refreshedDemo);
           await Promise.all(
@@ -53,7 +53,7 @@ export default function App() {
               .filter((demo) => demo.id !== refreshedDemo.id)
               .map((demo) => scoreStorage.remove(demo.id)),
           );
-          ordered = [refreshedDemo, ...ordered.filter((score) => score.composer !== "Exercice Atelier Piano")];
+          ordered = [refreshedDemo, ...ordered.filter((score) => !isBundledDemo(score))];
         }
         if (ordered.length) {
           setScores(ordered);
@@ -61,7 +61,7 @@ export default function App() {
           return;
         }
         const demo = parseMusicXml(DEMO_MUSIC_XML, "Premiers pas en do.musicxml");
-        demo.id = "atelier-demo-first-steps";
+        demo.id = BUNDLED_DEMO_ID;
         await scoreStorage.put(demo);
         setScores([demo]);
         setSelectedId(demo.id);
@@ -119,7 +119,7 @@ export default function App() {
   const deleteScore = async (id: string) => {
     const score = scores.find((item) => item.id === id);
     if (!score || !window.confirm(`Supprimer « ${score.title} » de cet appareil ?`)) return;
-    await scoreStorage.remove(id);
+    await Promise.all([scoreStorage.remove(id), scoreStorage.removeProgress(id)]);
     setScores((current) => current.filter((item) => item.id !== id));
     if (selectedId === id) {
       setSelectedId(scores.find((item) => item.id !== id)?.id || null);
@@ -129,7 +129,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-bar">
-        <a className="brand" href="/" aria-label="Accueil Atelier Piano">
+        <a className="brand" href={import.meta.env.BASE_URL} aria-label="Accueil Atelier Piano">
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
           <span><strong>Atelier</strong> Piano</span>
         </a>

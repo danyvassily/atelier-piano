@@ -1,8 +1,6 @@
 import type { ScoreDocument } from "../types";
-import { parseMidi } from "./midi";
 import { extractMusicXmlFromMxl, parseMusicXml } from "./musicXml";
 import { parseLilyPond } from "./lilypond";
-import { transcribePianoFile } from "./audioTranscription";
 
 const MEDIA_EXTENSIONS = new Set(["wav", "mp3", "ogg", "flac", "m4a", "aac", "mp4", "mov", "webm"]);
 
@@ -22,6 +20,7 @@ export async function importScore(file: File, options?: { bpm?: number; onProgre
     return parseMusicXml(extractMusicXmlFromMxl(buffer), file.name);
   }
   if (extension === "mid" || extension === "midi") {
+    const { parseMidi } = await import("./midi");
     return parseMidi(await file.arrayBuffer(), file.name);
   }
   if (extension === "ly") {
@@ -44,6 +43,7 @@ export async function importScore(file: File, options?: { bpm?: number; onProgre
   }
 
   if (isTranscribableMedia(file)) {
+    const { transcribePianoFile } = await import("./audioTranscription");
     return transcribePianoFile(file, options?.bpm || 80, options?.onProgress || (() => undefined));
   }
 

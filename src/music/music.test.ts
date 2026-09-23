@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { DEMO_MUSIC_XML } from "../demo";
+import { BUNDLED_DEMO_ID, DEMO_MUSIC_XML, isBundledDemo } from "../demo";
 import { createLessonPlan, notesForStage } from "./lessons";
 import { parseMusicXml } from "./musicXml";
 
@@ -21,6 +21,12 @@ describe("MusicXML", () => {
 
   it("rejette un fichier qui n’est pas une partition", () => {
     expect(() => parseMusicXml("<document />")).toThrow(/Aucune partition/);
+  });
+
+  it("distingue la démo intégrée d’une partition utilisateur au même compositeur", () => {
+    expect(isBundledDemo({ id: BUNDLED_DEMO_ID, rawText: undefined })).toBe(true);
+    expect(isBundledDemo({ id: "legacy-demo", rawText: DEMO_MUSIC_XML })).toBe(true);
+    expect(isBundledDemo({ id: "user-score", rawText: "<score-partwise />" })).toBe(false);
   });
 });
 
