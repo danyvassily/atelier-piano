@@ -75,6 +75,13 @@ const MIN_OCTAVE_SHIFT = -2;
 const MAX_OCTAVE_SHIFT = 2;
 
 /**
+ * Touches physiques réservées aux raccourcis de la séance : le piano ne les joue
+ * pas. « R » est le cas critique (il redémarre la section ET c’est un Ré sur la
+ * rangée haute) ; les autres sont listées pour que la règle reste explicite.
+ */
+const SESSION_SHORTCUT_CODES = ["KeyR", "Space", "Escape", "ArrowLeft", "ArrowRight"] as const;
+
+/**
  * Hauteur du piano-roll : elle suit la place réellement visible sous la scène
  * pour que la ligne de frappe et le clavier (bande basse) restent toujours dans
  * la fenêtre, y compris en fenêtre de 800 px de haut ou en plein écran.
@@ -544,6 +551,14 @@ export function SynthesiaPractice({
     scorerRef.current = new PracticeScorer(section.expected);
   }, [section, tempoFactor]);
 
+  // Mode attente : le transport doit le connaître AVANT d’avancer, sinon
+  // l’horloge ne s’arrête jamais sur les notes (il ne se fie qu’à son propre
+  // drapeau, celui du scoreur ne suffit pas). C’est ce qui relie l’option à
+  // l’horloge : le temps se fige sur la note non jouée, puis repart.
+  useEffect(() => {
+    transportRef.current.setWaitMode(waitMode);
+  }, [waitMode]);
+
   // Horloge d’image : avance le transport, récolte les oublis et publie l’état.
   // Elle se relance quand la section, le nommage ou le mode attente changent.
   useEffect(() => {
@@ -637,9 +652,11 @@ export function SynthesiaPractice({
   }, [section, naming, waitMode, bestKey, onStats, onBestAccuracy, settleChromeIdle]);
 
   // Clavier d’ordinateur : touche physique → note MIDI, transposée d’octave.
+  // Les codes réservés aux raccourcis de la séance ne jouent aucune note.
   useEffect(() => {
     return attachComputerKeyboard(window, {
       baseMidi,
+      reservedCodes: SESSION_SHORTCUT_CODES,
       onNoteOn: handleNoteOn,
       onNoteOff: handleNoteOff,
     });

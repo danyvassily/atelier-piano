@@ -36,6 +36,13 @@ export interface ComputerKeyboardOptions {
   baseMidi?: number;
   /** Vélocité envoyée à chaque appui (défaut 100, bornée 1..127). */
   velocity?: number;
+  /**
+   * Codes (`event.code`) réservés aux raccourcis de l’écran : le clavier physique
+   * ne les joue pas. Sans cette liste, une touche à la fois raccourci et note
+   * (par exemple « R » = recommencer, qui est aussi un Ré sur la rangée haute)
+   * déclencherait les deux actions d’un seul appui.
+   */
+  reservedCodes?: readonly string[];
   onNoteOn: (midi: number, velocity: number) => void;
   onNoteOff: (midi: number) => void;
 }
@@ -53,6 +60,8 @@ export function attachComputerKeyboard(target: Window, opts: ComputerKeyboardOpt
   const baseMidi = Math.round(opts.baseMidi ?? DEFAULT_BASE_MIDI);
   const rawVelocity = Math.round(opts.velocity ?? DEFAULT_VELOCITY);
   const velocity = Math.min(127, Math.max(1, Number.isFinite(rawVelocity) ? rawVelocity : DEFAULT_VELOCITY));
+  /** Touches retenues par l’écran (raccourcis) : jamais jouées comme des notes. */
+  const reserved = new Set(opts.reservedCodes ?? []);
 
   // Notes actuellement tenues par le clavier (anti-doublon et anti-note bloquée).
   const held = new Set<number>();
@@ -66,6 +75,7 @@ export function attachComputerKeyboard(target: Window, opts: ComputerKeyboardOpt
 
   const handleKeyDown = (event: KeyboardEvent): void => {
     if (event.repeat) return; // la répétition automatique du système ne rejoue pas la note
+    if (reserved.has(event.code)) return; // touche de raccourci de l’écran : jamais jouée
     if (isTypingTarget(event.target) || isTypingTarget(currentActiveElement(target))) return;
     const offset = KEY_OFFSETS.get(event.code);
     if (offset === undefined) return;

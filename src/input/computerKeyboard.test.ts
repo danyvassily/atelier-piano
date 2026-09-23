@@ -9,7 +9,9 @@ interface Recorder {
 
 const detachers: Array<() => void> = [];
 
-function attach(overrides: { baseMidi?: number; velocity?: number } = {}): { recorder: Recorder; detach: () => void } {
+function attach(
+  overrides: { baseMidi?: number; velocity?: number; reservedCodes?: readonly string[] } = {},
+): { recorder: Recorder; detach: () => void } {
   const recorder: Recorder = { noteOns: [], noteOffs: [] };
   const detach = attachComputerKeyboard(window, {
     ...overrides,
@@ -79,6 +81,33 @@ describe("clavier d’ordinateur", () => {
       { midi: 60, velocity: 64 },
     ]);
     expect(recorder.noteOffs).toEqual([48, 60]);
+  });
+
+  it("réserve les touches des raccourcis de l’écran, sans toucher au reste", () => {
+    const { recorder } = attach({ reservedCodes: ["KeyR", "Space"] });
+
+    // « R » redémarre la séance : il ne doit jouer aucune note (sinon un seul
+    // appui relancerait la section ET ferait sonner un Ré).
+    keyDown("KeyR");
+    keyUp("KeyR");
+    expect(recorder.noteOns).toEqual([]);
+    expect(recorder.noteOffs).toEqual([]);
+
+    // Les autres touches des deux rangées restent jouables.
+    keyDown("KeyE");
+    keyUp("KeyE");
+    expect(recorder.noteOns).toEqual([{ midi: 74, velocity: 100 }]);
+    expect(recorder.noteOffs).toEqual([74]);
+  });
+
+  it("joue un code réservé quand aucun raccourci ne le retient", () => {
+    const { recorder } = attach();
+
+    keyDown("KeyR");
+    keyUp("KeyR");
+
+    expect(recorder.noteOns).toEqual([{ midi: 75, velocity: 100 }]);
+    expect(recorder.noteOffs).toEqual([75]);
   });
 
   it("n’émet qu’une fois par appui et relâche au keyup", () => {
