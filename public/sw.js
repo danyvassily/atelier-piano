@@ -1,4 +1,4 @@
-const CACHE = "atelier-piano-v6";
+const CACHE = "atelier-piano-v7";
 const BASE = self.registration.scope;
 const SHELL_URL = new URL("./", BASE).toString();
 const SHELL = [SHELL_URL, new URL("manifest.webmanifest", BASE).toString(), new URL("piano-mark.svg", BASE).toString()];
