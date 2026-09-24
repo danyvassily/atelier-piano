@@ -166,6 +166,16 @@ describe("clavier d’ordinateur", () => {
     expect(recorder.noteOns).toHaveLength(1);
   });
 
+  it("réserve les combinaisons avec modificateur aux raccourcis", () => {
+    const { recorder } = attach();
+
+    expect(keyDown("KeyR", window, { shiftKey: true }).defaultPrevented).toBe(false);
+    expect(keyDown("KeyZ", window, { metaKey: true }).defaultPrevented).toBe(false);
+    expect(keyDown("KeyQ", window, { ctrlKey: true }).defaultPrevented).toBe(false);
+
+    expect(recorder.noteOns).toEqual([]);
+  });
+
   it("reste muet dans les champs de saisie et contenus éditables", () => {
     const { recorder } = attach();
     const input = document.createElement("input");

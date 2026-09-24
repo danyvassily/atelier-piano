@@ -37,7 +37,7 @@ const PAIR: NoteEvent[] = [
   makeNote({ id: "haut", midi: 84, onsetBeats: 20, hand: "right" }),
 ];
 
-const LEFT_INK = "#2d6cdf";
+const LEFT_INK = "#8b5cf6";
 const RIGHT_INK = "#4fc3f7";
 /** Couleur des séparateurs entre touches blanches (cf. FallingNotes). */
 const WHITE_KEY_SEPARATOR = "#c9ced6";
@@ -98,9 +98,17 @@ function hitLineY(): number {
   return line.y + 1;
 }
 
-/** Touches blanches dessinées (corps arrondi sous la ligne de frappe). */
+/**
+ * Touches blanches dessinées (corps arrondi sous la ligne de frappe).
+ * Le filtre de largeur écarte les touches NOIRES : depuis le clavier
+ * proportionnel (aspect 5,8), une noire dépasse la hauteur plancher du harnais
+ * et serait comptée à tort comme une blanche.
+ */
 function whiteKeyBoxes(): CanvasBox[] {
   const top = hitLineY() + 2;
+  const marks = separators();
+  const steps = marks.slice(1).map((x, index) => x - marks[index]);
+  const keyWidth = steps.length ? steps.reduce((sum, step) => sum + step, 0) / steps.length : Number.NaN;
   const seen = new Set<string>();
   const boxes: CanvasBox[] = [];
   for (const path of recorder.paths) {
@@ -108,6 +116,8 @@ function whiteKeyBoxes(): CanvasBox[] {
     const box = boxOf(path.points);
     if (!box) continue;
     if (box.y < top - 1 || box.h < WHITE_KEY_MIN_HEIGHT_PX) continue;
+    // Une blanche occupe ~toute sa case ; une noire fait ~56 % de sa largeur.
+    if (Number.isFinite(keyWidth) && Math.abs(box.w - (keyWidth - 1)) > 2) continue;
     const key = `${box.x.toFixed(2)}|${box.h.toFixed(2)}`;
     if (seen.has(key)) continue; // halo et corps d’une touche active : même cadre
     seen.add(key);

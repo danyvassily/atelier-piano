@@ -212,13 +212,15 @@ describe("SynthesiaPractice — clavier d’ordinateur", () => {
     render();
 
     const options = keyboardOptions();
-    expect(options.reservedCodes).toContain("KeyR");
+    expect(options.reservedCodes).toContain("Space");
+    // « R » reste jouable : le redémarrage vit sur « Maj+R » (cf. test suivant).
+    expect(options.reservedCodes).not.toContain("KeyR");
     expect(typeof options.onNoteOn).toBe("function");
     expect(typeof options.onNoteOff).toBe("function");
     expect(options.baseMidi).toBe(60);
   });
 
-  it("rejoue la section quand on presse « R », sans jouer de note", async () => {
+  it("rejoue la section quand on presse « Maj+R », sans jouer de note", async () => {
     render();
     const scene = transport();
 
@@ -227,7 +229,7 @@ describe("SynthesiaPractice — clavier d’ordinateur", () => {
     expect(scene.playing).toBe(true);
 
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyR", key: "r", bubbles: true, cancelable: true }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyR", key: "R", shiftKey: true, bubbles: true, cancelable: true }));
     });
     clock.step(4, 16);
 

@@ -8,3 +8,4 @@ coverage/
 *.local.test.ts
 .vercel
 .env*
+graphify-out/
