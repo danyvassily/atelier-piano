@@ -1,11 +1,11 @@
 import type { NoteEvent } from "../types";
-import { midiToFrequency } from "../music/notes";
 import { unlockAudio } from "./audioContext";
+import { createPianoVoice, type PianoVoice } from "./pianoSound";
 
 export class ScorePlayer {
   private context: AudioContext | null = null;
   private timers: number[] = [];
-  private oscillators: OscillatorNode[] = [];
+  private voices: PianoVoice[] = [];
   private generation = 0;
 
   async play(notes: NoteEvent[], bpm: number, onProgress: (noteIndex: number) => void, onEnd: () => void): Promise<void> {
@@ -23,17 +23,9 @@ export class ScorePlayer {
       if (!this.context) return;
       const onset = startTime + (note.onsetBeats - firstBeat) * secondsPerBeat;
       const duration = Math.max(0.09, Math.min(note.durationBeats * secondsPerBeat, 2.5));
-      const oscillator = this.context.createOscillator();
-      const gain = this.context.createGain();
-      oscillator.type = "triangle";
-      oscillator.frequency.value = midiToFrequency(note.midi);
-      gain.gain.setValueAtTime(0.0001, onset);
-      gain.gain.exponentialRampToValueAtTime(0.11 * Math.max(note.velocity, 0.3), onset + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, onset + duration);
-      oscillator.connect(gain).connect(this.context.destination);
-      oscillator.start(onset);
-      oscillator.stop(onset + duration + 0.02);
-      this.oscillators.push(oscillator);
+      const voice = createPianoVoice(this.context, note.midi, note.velocity, onset);
+      voice.release(onset + duration, Math.min(0.72, Math.max(0.18, duration * 0.34)));
+      this.voices.push(voice);
       this.timers.push(window.setTimeout(() => onProgress(index), Math.max(0, (onset - this.context!.currentTime) * 1000)));
     });
 
@@ -45,15 +37,9 @@ export class ScorePlayer {
   stop(): void {
     this.generation += 1;
     this.timers.forEach((timer) => window.clearTimeout(timer));
-    this.oscillators.forEach((oscillator) => {
-      try {
-        oscillator.stop();
-      } catch {
-        // An oscillator that already ended does not need another stop.
-      }
-    });
+    this.voices.forEach((voice) => voice.stop());
     this.timers = [];
-    this.oscillators = [];
+    this.voices = [];
     this.context = null;
   }
 }

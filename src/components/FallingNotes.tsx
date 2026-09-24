@@ -43,6 +43,8 @@ const COLOR = {
   hitGlow: "rgba(79, 195, 247, 0.22)",
   /** Sol : bande sombre discrète sous le clavier. */
   floor: "#0a0c0f",
+  felt: "#9d1f2d",
+  feltDark: "#470a11",
   whiteKeyTop: "#ffffff",
   whiteKeyMid: "#f4f5f7",
   whiteKeyBottom: "#e9ecf1",
@@ -89,26 +91,27 @@ const CHROMATIC_COLORS = [
 
 const DEFAULT_HEIGHT_PX = 360;
 const MIN_CANVAS_HEIGHT_PX = 120;
-const KEYBOARD_HEIGHT_RATIO = 0.28;
-const MIN_KEYBOARD_HEIGHT_PX = 56;
-const MAX_KEYBOARD_HEIGHT_PX = 132;
-const MIN_PLAYFIELD_PX = 110;
-/** Longueur d’une touche noire, en fraction de la hauteur du clavier (~62 %). */
-const BLACK_KEY_HEIGHT_RATIO = 0.62;
+const MIN_KEYBOARD_HEIGHT_PX = 72;
+const MAX_KEYBOARD_HEIGHT_PX = 320;
+const MIN_PLAYFIELD_PX = 140;
+/** Longueur visible d'une blanche par rapport à sa largeur (piano réel ≈ 6,4). */
+const WHITE_KEY_ASPECT_RATIO = 5.8;
+/** Longueur d’une touche noire, en fraction de la hauteur du clavier (~64 %). */
+const BLACK_KEY_HEIGHT_RATIO = 0.64;
 const HIT_LINE_GAP_PX = 2;
 /** Bande de sol laissée sous les touches, en pixels. */
-const FLOOR_BAND_PX = 4;
+const FLOOR_BAND_PX = 6;
 /** Enfoncement visuel d’une touche attendue (mais pas encore enfoncée), en pixels. */
-const KEY_SINK_PX = 2;
+const KEY_SINK_PX = 0;
 /** Enfoncement visuel d’une touche réellement enfoncée, en pixels. */
-const KEY_SINK_PRESSED_PX = 3;
+const KEY_SINK_PRESSED_PX = 6;
 /** Rayon des coins bas d’une touche noire, et des coins des touches blanches. */
 const BLACK_KEY_RADIUS_PX = 3;
 const WHITE_KEY_RADIUS_PX = 4;
 /** Hauteur du bandeau brillant (gloss) d’une touche noire, en fraction de sa longueur. */
 const BLACK_KEY_GLOSS_RATIO = 0.35;
 /** Bande d’ombre portée d’une touche noire sur les blanches, en pixels. */
-const BLACK_KEY_SHADOW_PX = 16;
+const BLACK_KEY_SHADOW_PX = 24;
 /** Épaisseur de la ligne spéculaire au bord supérieur d’une touche noire. */
 const BLACK_KEY_SPECULAR_PX = 1;
 /** Reflet vertical d’une touche noire : largeur et hauteur, en fractions de la touche. */
@@ -161,6 +164,8 @@ export interface FallingNotesProps {
   onKeyPress?: (midi: number) => void;
   /** Appelé quand l’utilisateur relâche une touche. */
   onKeyRelease?: (midi: number) => void;
+  /** Publie la position réelle de la ligne de frappe pour les overlays du parent. */
+  onHitLineChange?: (percent: number) => void;
   /** Hauteur du canvas en pixels CSS (360 par défaut). */
   heightPx?: number;
   /** Classe CSS appliquée au canvas. */
@@ -195,12 +200,13 @@ interface FrameData {
 function computeGeometry(widthPx: number, heightPx: number, layout: KeyboardLayout): FrameGeometry {
   const safeWidth = Math.max(0, widthPx);
   const safeHeight = Math.max(MIN_CANVAS_HEIGHT_PX, heightPx);
+  const whiteKeyWidthPx = layout.whiteCount > 0 ? safeWidth / layout.whiteCount : safeWidth;
+  const proportionalHeight = Math.round(whiteKeyWidthPx * WHITE_KEY_ASPECT_RATIO);
   const keyboardHeightPx = Math.max(
     MIN_KEYBOARD_HEIGHT_PX,
-    Math.min(Math.round(safeHeight * KEYBOARD_HEIGHT_RATIO), safeHeight - MIN_PLAYFIELD_PX, MAX_KEYBOARD_HEIGHT_PX),
+    Math.min(proportionalHeight, safeHeight - MIN_PLAYFIELD_PX, MAX_KEYBOARD_HEIGHT_PX),
   );
   const keyboardTopY = safeHeight - keyboardHeightPx;
-  const whiteKeyWidthPx = layout.whiteCount > 0 ? safeWidth / layout.whiteCount : safeWidth;
   return {
     widthPx: safeWidth,
     heightPx: safeHeight,
@@ -484,6 +490,13 @@ function drawWhiteKey(
   });
   context.fillStyle = landing;
   context.fillRect(x, bottom - KEY_LANDING_SHADOW_PX, w, KEY_LANDING_SHADOW_PX);
+  // Lèvre frontale : un mince chanfrein donne une vraie épaisseur à l'ivoire.
+  context.fillStyle = "rgba(255, 255, 255, 0.58)";
+  context.fillRect(x + 1, bottom - 7, Math.max(0, w - 2), 1);
+  context.fillStyle = "rgba(94, 102, 111, 0.24)";
+  context.fillRect(x + 1, bottom - 2, Math.max(0, w - 2), 2);
+  context.fillStyle = "rgba(55, 62, 69, 0.16)";
+  context.fillRect(x, top + 2, 1, Math.max(0, height - 10));
   // Fine ligne de lumière en haut, doublée d’un liseré de biseau.
   context.fillStyle = "rgba(255, 255, 255, 0.96)";
   context.fillRect(x, top, w, 1);
@@ -578,6 +591,15 @@ function drawBlackKey(
   // Fine ligne spéculaire au bord supérieur de la touche.
   context.fillStyle = active ? "rgba(240, 252, 255, 0.74)" : "rgba(255, 255, 255, 0.62)";
   context.fillRect(x, top, w, BLACK_KEY_SPECULAR_PX);
+  // Face avant de l'ébène : plus mate et plus sombre que la surface supérieure.
+  const frontHeight = Math.max(7, Math.round(height * 0.16));
+  const front = context.createLinearGradient(0, bottom - frontHeight, 0, bottom);
+  front.addColorStop(0, active ? "rgba(37, 100, 132, 0.72)" : "rgba(17, 20, 24, 0.72)");
+  front.addColorStop(1, "rgba(0, 0, 0, 0.92)");
+  context.fillStyle = front;
+  context.fillRect(x, bottom - frontHeight, w, frontHeight);
+  context.fillStyle = "rgba(255, 255, 255, 0.13)";
+  context.fillRect(x + 1, bottom - frontHeight, Math.max(0, w - 2), 1);
   context.restore();
 }
 
@@ -616,6 +638,14 @@ function drawKeyboard(context: CanvasRenderingContext2D, frame: FrameData) {
   for (let index = 1; index < layout.whiteMidis.length; index += 1) {
     context.fillRect(Math.round(index * whiteKeyWidthPx) - 0.5, keyboardTopY + 1, 1, keyHeight - 2);
   }
+
+  // Feutre rouge derrière les touches : repère caractéristique d'un piano acoustique.
+  const felt = context.createLinearGradient(0, keyboardTopY, 0, keyboardTopY + 6);
+  felt.addColorStop(0, COLOR.feltDark);
+  felt.addColorStop(0.5, COLOR.felt);
+  felt.addColorStop(1, COLOR.feltDark);
+  context.fillStyle = felt;
+  context.fillRect(0, keyboardTopY + 1, widthPx, 5);
 
   // Ombre de pose du clavier entier : les touches reposent sur le sol. Dessinée
   // une seule fois, elle remplace l’ombre de canvas de chaque touche (coûteuse).
@@ -719,6 +749,7 @@ export function FallingNotes({
   pressedMidis = NO_MIDIS,
   onKeyPress,
   onKeyRelease,
+  onHitLineChange,
   heightPx = DEFAULT_HEIGHT_PX,
   className,
 }: FallingNotesProps) {
@@ -843,6 +874,11 @@ export function FallingNotes({
     }),
     [geometry, layout, visible, expectedMidis, pressedKeys, activeNoteIds, naming, showNoteNames, colorByPitch, beatLines],
   );
+
+  useEffect(() => {
+    if (!(geometry.heightPx > 0)) return;
+    onHitLineChange?.(geometry.hitLineY / geometry.heightPx * 100);
+  }, [geometry.heightPx, geometry.hitLineY, onHitLineChange]);
 
   useEffect(() => {
     frameRef.current = frame;

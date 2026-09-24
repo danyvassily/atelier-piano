@@ -24,6 +24,7 @@ import {
 import type { Hand, LessonStage, NoteNaming, PracticeStats, ScoreDocument } from "../types";
 import { Metronome } from "../audio/metronome";
 import { ScorePlayer } from "../audio/scorePlayer";
+import { PianoSound } from "../audio/pianoSound";
 import { unlockAudio } from "../audio/audioContext";
 import { attachComputerKeyboard } from "../input/computerKeyboard";
 import { MidiInput, type MidiDeviceInfo } from "../input/midiIo";
@@ -83,17 +84,6 @@ const CANVAS_FALLBACK_HEIGHT_PX = 400;
 const SCENE_BOTTOM_MARGIN_PX = 14;
 /** Repli de mesure (environnement sans géométrie, rendu hors navigateur). */
 const SCENE_ROOM_FALLBACK_PX = CANVAS_FALLBACK_HEIGHT_PX + SCENE_BOTTOM_MARGIN_PX;
-
-/**
- * Bornes du clavier intégré, telles que les calcule `FallingNotes` (28 % de la
- * hauteur du canvas, entre 56 et 132 px, avec 110 px de zone de chute réservés).
- * Elles ne servent qu’à placer le retour visuel de la ligne de frappe.
- */
-const KEYBOARD_HEIGHT_RATIO = 0.28;
-const MIN_KEYBOARD_HEIGHT_PX = 56;
-const MAX_KEYBOARD_HEIGHT_PX = 132;
-const MIN_PLAYFIELD_PX = 110;
-const HIT_LINE_GAP_PX = 2;
 
 /** Estompage automatique du transport et du HUD après une lecture sans interaction. */
 const CHROME_HIDE_DELAY_MS = 4000;
@@ -242,20 +232,6 @@ function isTypingTarget(node: EventTarget | null): boolean {
   return element.isContentEditable === true;
 }
 
-/** Ordonnée de la ligne de frappe, en pourcentage de la hauteur du canvas. */
-function hitLinePercentOf(canvasHeightPx: number): number {
-  if (!(canvasHeightPx > 0)) return 71.5;
-  const keyboardHeightPx = Math.max(
-    MIN_KEYBOARD_HEIGHT_PX,
-    Math.min(
-      Math.round(canvasHeightPx * KEYBOARD_HEIGHT_RATIO),
-      canvasHeightPx - MIN_PLAYFIELD_PX,
-      MAX_KEYBOARD_HEIGHT_PX,
-    ),
-  );
-  return (Math.max(0, canvasHeightPx - keyboardHeightPx - HIT_LINE_GAP_PX) / canvasHeightPx) * 100;
-}
-
 /** Élément passé en plein écran natif, préfixes WebKit compris. */
 function nativeFullscreenElement(): Element | null {
   const scope = document as Document & { webkitFullscreenElement?: Element | null };
@@ -360,6 +336,8 @@ export function SynthesiaPractice({
   const [chromeHidden, setChromeHidden] = useState(false);
   /** Place visible sous la scène, en pixels : elle dimensionne le piano-roll. */
   const [sceneRoomPx, setSceneRoomPx] = useState(SCENE_ROOM_FALLBACK_PX);
+  /** Ligne de frappe publiée par le canvas, dont le clavier suit les vraies proportions. */
+  const [hitLinePercent, setHitLinePercent] = useState(72);
   /** Hauteur du viewport : en immersif, le piano-roll occupe toute la fenêtre. */
   const [viewportHeightPx, setViewportHeightPx] = useState(() =>
     typeof window === "undefined" ? CANVAS_FALLBACK_HEIGHT_PX : Math.round(window.innerHeight),
@@ -373,6 +351,7 @@ export function SynthesiaPractice({
   const scorerRef = useRef(new PracticeScorer([]));
   const metronomeRef = useRef(new Metronome());
   const scorePlayerRef = useRef(new ScorePlayer());
+  const pianoSoundRef = useRef(new PianoSound());
   const [midiInput] = useState(() => new MidiInput());
   const midiSupported = useMemo(() => midiInput.isSupported(), [midiInput]);
   const shellRef = useRef<HTMLDivElement | null>(null);
@@ -430,8 +409,6 @@ export function SynthesiaPractice({
   const canvasHeightPx = immersiveView
     ? Math.max(CANVAS_MIN_HEIGHT_PX, Math.round(viewportHeightPx - IMMERSIVE_SCENE_MARGIN_PX))
     : clamp(sceneRoomPx - SCENE_BOTTOM_MARGIN_PX, CANVAS_MIN_HEIGHT_PX, CANVAS_MAX_HEIGHT_PX);
-  const hitLinePercent = hitLinePercentOf(canvasHeightPx);
-
   /** Section jouée : mesures (étape ou boucle), portée(s) et notes attendues en secondes. */
   const section = useMemo(() => {
     const from = clampMeasure(score, loopOn ? loopStart : stageStartMeasure);
@@ -481,9 +458,12 @@ export function SynthesiaPractice({
   /* --------------------------- Entrées --------------------------- */
 
   const handleNoteOn = useCallback(
-    (midi: number) => {
+    (midi: number, velocity = 100) => {
       if (!Number.isFinite(midi)) return;
       const note = Math.round(midi);
+      void pianoSoundRef.current.noteOn(note, velocity).catch((reason: unknown) => {
+        setPlaybackError(reason instanceof Error ? reason.message : "Le son du piano n’a pas pu démarrer.");
+      });
       pressedRef.current.add(note);
       setPressedMidis((current) => (current.includes(note) ? current : [...current, note].sort((a, b) => a - b)));
       const transport = transportRef.current;
@@ -498,6 +478,7 @@ export function SynthesiaPractice({
 
   const handleNoteOff = useCallback((midi: number) => {
     const note = Math.round(midi);
+    pianoSoundRef.current.noteOff(note);
     pressedRef.current.delete(note);
     setPressedMidis((current) => (current.includes(note) ? current.filter((value) => value !== note) : current));
   }, []);
@@ -778,10 +759,12 @@ export function SynthesiaPractice({
   // Libération propre des ressources audio et des touches tenues.
   useEffect(() => {
     const player = scorePlayerRef.current;
+    const piano = pianoSoundRef.current;
     const metronome = metronomeRef.current;
     const held = pressedRef.current;
     return () => {
       player.stop();
+      piano.stopAll();
       metronome.stop();
       midiInput.disconnect();
       held.clear();
@@ -1182,6 +1165,7 @@ export function SynthesiaPractice({
           pressedMidis={pressedMidis}
           onKeyPress={handleNoteOn}
           onKeyRelease={handleNoteOff}
+          onHitLineChange={setHitLinePercent}
           heightPx={canvasHeightPx}
           className="synthesia-canvas"
         />
