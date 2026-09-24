@@ -6,11 +6,15 @@ export class ScorePlayer {
   private context: AudioContext | null = null;
   private timers: number[] = [];
   private oscillators: OscillatorNode[] = [];
+  private generation = 0;
 
   async play(notes: NoteEvent[], bpm: number, onProgress: (noteIndex: number) => void, onEnd: () => void): Promise<void> {
     this.stop();
     if (!notes.length) return;
-    this.context = await unlockAudio();
+    const generation = this.generation;
+    const context = await unlockAudio();
+    if (generation !== this.generation) return;
+    this.context = context;
     const firstBeat = Math.min(...notes.map((note) => note.onsetBeats));
     const secondsPerBeat = 60 / bpm;
     const startTime = this.context.currentTime + 0.08;
@@ -33,12 +37,13 @@ export class ScorePlayer {
       this.timers.push(window.setTimeout(() => onProgress(index), Math.max(0, (onset - this.context!.currentTime) * 1000)));
     });
 
-    const last = notes.at(-1)!;
-    const totalSeconds = (last.onsetBeats - firstBeat + last.durationBeats) * secondsPerBeat;
+    const finalBeat = Math.max(...notes.map((note) => note.onsetBeats + note.durationBeats));
+    const totalSeconds = (finalBeat - firstBeat) * secondsPerBeat;
     this.timers.push(window.setTimeout(onEnd, totalSeconds * 1000 + 150));
   }
 
   stop(): void {
+    this.generation += 1;
     this.timers.forEach((timer) => window.clearTimeout(timer));
     this.oscillators.forEach((oscillator) => {
       try {

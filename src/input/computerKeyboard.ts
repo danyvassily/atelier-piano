@@ -66,6 +66,9 @@ export function attachComputerKeyboard(target: Window, opts: ComputerKeyboardOpt
 
   const handleKeyDown = (event: KeyboardEvent): void => {
     if (event.repeat) return; // la répétition automatique du système ne rejoue pas la note
+    // Les combinaisons servent aux raccourcis de l'application et du navigateur.
+    // Sans ce garde-fou, Maj+R redémarrait la séance tout en jouant Ré#.
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (isTypingTarget(event.target) || isTypingTarget(currentActiveElement(target))) return;
     const offset = KEY_OFFSETS.get(event.code);
     if (offset === undefined) return;

@@ -36,6 +36,8 @@ const COLOR = {
   laneBlack: "rgba(0, 0, 0, 0.62)",
   separator: "#12161b",
   octave: "#1e242c",
+  beatLine: "rgba(255, 255, 255, 0.08)",
+  measureLine: "rgba(79, 195, 247, 0.24)",
   /** Ligne de frappe : un repère cyan discret, jamais un trait blanc criard. */
   hitLine: "rgba(79, 195, 247, 0.35)",
   hitGlow: "rgba(79, 195, 247, 0.22)",
@@ -64,9 +66,9 @@ const COLOR = {
   noteInk: "#ffffff",
   noteSheen: "rgba(255, 255, 255, 0.55)",
   focusRing: "rgba(255, 255, 255, 0.92)",
-  /** Mains : cyan pour la droite, bleu pour la gauche. */
+  /** Mains : cyan pour la droite, violet pour la gauche — lisibles même dans les accords. */
   rightHand: "#4fc3f7",
-  leftHand: "#2d6cdf",
+  leftHand: "#8b5cf6",
 } as const;
 
 /** 12 couleurs chromatiques (une par classe de hauteur) pour le mode `colorByPitch`. */
@@ -139,6 +141,8 @@ export interface FallingNotesProps {
   bpm: number;
   /** Facteur de tempo appliqué (0.35 → 1.1 dans l’atelier ; 1 par défaut). */
   tempoFactor?: number;
+  /** Signature rythmique, utilisée pour distinguer temps et débuts de mesure. */
+  timeSignature?: [number, number];
   /** Position de lecture en secondes (l’horloge est fournie par le parent). */
   currentTimeSec: number;
   /** Main affichée ; « both » montre les deux mains. */
@@ -184,6 +188,7 @@ interface FrameData {
   naming: NoteNaming;
   showNoteNames: boolean;
   colorByPitch: boolean;
+  beatLines: Array<{ y: number; measure: boolean }>;
 }
 
 /** Géométrie verticale du canvas : zone de chute en haut, clavier en bas. */
@@ -275,6 +280,17 @@ function drawLanes(context: CanvasRenderingContext2D, frame: FrameData) {
     context.fillStyle = midi % 12 === 0 ? COLOR.octave : COLOR.separator;
     context.fillRect(Math.round(index * whiteKeyWidthPx), 0, 1, hitLineY);
   });
+}
+
+/** Repères rythmiques horizontaux : fins pour les temps, cyan pour les mesures. */
+function drawBeatGrid(context: CanvasRenderingContext2D, frame: FrameData) {
+  const { widthPx } = frame.geometry;
+  context.save();
+  for (const line of frame.beatLines) {
+    context.fillStyle = line.measure ? COLOR.measureLine : COLOR.beatLine;
+    context.fillRect(0, Math.round(line.y), widthPx, line.measure ? 2 : 1);
+  }
+  context.restore();
 }
 
 /**
@@ -657,6 +673,7 @@ function drawFrame(context: CanvasRenderingContext2D, frame: FrameData) {
   context.fillStyle = COLOR.sky;
   context.fillRect(0, 0, frame.geometry.widthPx, frame.geometry.heightPx);
   drawLanes(context, frame);
+  drawBeatGrid(context, frame);
   drawNotes(context, frame);
   drawHitLine(context, frame);
   drawKeyboard(context, frame);
@@ -692,6 +709,7 @@ export function FallingNotes({
   notes,
   bpm,
   tempoFactor = 1,
+  timeSignature = [4, 4],
   currentTimeSec,
   hand = "both",
   naming = "french",
@@ -754,6 +772,24 @@ export function FallingNotes({
   const layout = useMemo(() => buildLayout(computeRange(notes)), [notes]);
   const geometry = useMemo(() => computeGeometry(widthPx, canvasHeightPx, layout), [widthPx, canvasHeightPx, layout]);
   const pxPerSec = Math.max(48, geometry.hitLineY / FALL_SECONDS);
+  const beatLines = useMemo(() => {
+    const effectiveBpm = Math.max(1, bpm * tempoFactor);
+    const secondsPerQuarter = 60 / effectiveBpm;
+    const beatUnitInQuarters = 4 / Math.max(1, timeSignature[1]);
+    const secondsPerGridBeat = secondsPerQuarter * beatUnitInQuarters;
+    const beatsPerMeasure = Math.max(1, timeSignature[0]);
+    const firstBeat = Math.ceil(currentTimeSec / secondsPerGridBeat - 1e-6);
+    const visibleSeconds = geometry.hitLineY / pxPerSec;
+    const lastBeat = Math.ceil((currentTimeSec + visibleSeconds) / secondsPerGridBeat);
+    const lines: Array<{ y: number; measure: boolean }> = [];
+    for (let beat = firstBeat; beat <= lastBeat; beat += 1) {
+      const y = geometry.hitLineY - (beat * secondsPerGridBeat - currentTimeSec) * pxPerSec;
+      if (y < 0 || y > geometry.hitLineY) continue;
+      const normalized = ((beat % beatsPerMeasure) + beatsPerMeasure) % beatsPerMeasure;
+      lines.push({ y, measure: normalized === 0 });
+    }
+    return lines;
+  }, [bpm, tempoFactor, timeSignature, currentTimeSec, geometry.hitLineY, pxPerSec]);
   const activeNotes = useMemo(
     () => activeNotesAt(sortedNotes, currentTimeSec, ACTIVE_NOTE_WINDOW_SEC, { bpm, tempoFactor }),
     [sortedNotes, currentTimeSec, bpm, tempoFactor],
@@ -803,8 +839,9 @@ export function FallingNotes({
       naming,
       showNoteNames,
       colorByPitch,
+      beatLines,
     }),
-    [geometry, layout, visible, expectedMidis, pressedKeys, activeNoteIds, naming, showNoteNames, colorByPitch],
+    [geometry, layout, visible, expectedMidis, pressedKeys, activeNoteIds, naming, showNoteNames, colorByPitch, beatLines],
   );
 
   useEffect(() => {

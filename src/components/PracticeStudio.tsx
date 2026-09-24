@@ -98,7 +98,7 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
   const [pdfPageCount, setPdfPageCount] = useState(0);
   const [naming, setNaming] = useState<NoteNaming>(() => localStorage.getItem("atelier-note-naming") === "letters" ? "letters" : "french");
   // Mode d’affichage : parcours guidé (historique) ou piano-roll « Mode Synthesia ».
-  const [pianoRoll, setPianoRoll] = useState(false);
+  const [pianoRoll, setPianoRoll] = useState(() => localStorage.getItem("atelier-practice-mode") !== "guided");
 
   const scorePlayer = useRef(new ScorePlayer());
   const pitchDetector = useRef(new PianoPitchDetector());
@@ -167,6 +167,10 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
   useEffect(() => {
     localStorage.setItem("atelier-note-naming", naming);
   }, [naming]);
+
+  useEffect(() => {
+    localStorage.setItem("atelier-practice-mode", pianoRoll ? "synthesia" : "guided");
+  }, [pianoRoll]);
 
   useEffect(() => {
     localStorage.setItem("atelier-mic-sensitivity", String(sensitivity));
@@ -539,9 +543,9 @@ export function PracticeStudio({ score, allScores, onImport, onUpdateScore, onAd
   if (pianoRoll) {
     return (
       <>
-        <main className="studio-layout">
+        <main className="studio-layout synthesia-layout">
           <LessonRail stages={stages} currentId={stage.id} completedIds={completedStageIds} onSelect={selectStage} />
-          <section className="practice-stage">
+          <section className="practice-stage synthesia-practice-stage">
             {studioHeader}
             {modeSwitch}
             <SynthesiaPractice

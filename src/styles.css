@@ -2590,6 +2590,17 @@ input:focus-visible {
   --synthesia-accent-glow: rgb(79 195 247 / 0.22);
 }
 
+/* Le piano-roll est le cœur de l'application : il récupère davantage de largeur
+   tout en gardant le parcours visible pour changer rapidement d'exercice. */
+.studio-layout.synthesia-layout {
+  grid-template-columns: 172px minmax(0, 1fr);
+}
+
+.synthesia-practice-stage {
+  max-width: none;
+  padding: 18px 22px 30px;
+}
+
 :root[data-theme="dark"] .synthesia,
 .synthesia.immersive,
 .synthesia.is-fullscreen {
@@ -2755,6 +2766,26 @@ input:focus-visible {
   border-color: transparent;
   background: transparent;
   color: var(--muted);
+}
+
+.synthesia-hands button::before {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--hand-color, linear-gradient(135deg, #8b5cf6 0 48%, #4fc3f7 52% 100%));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--hand-glow, #4fc3f7) 42%, transparent);
+  content: "";
+}
+
+.synthesia-hands button[data-hand="right"] {
+  --hand-color: #4fc3f7;
+  --hand-glow: #4fc3f7;
+}
+
+.synthesia-hands button[data-hand="left"] {
+  --hand-color: #8b5cf6;
+  --hand-glow: #8b5cf6;
 }
 
 .synthesia-hands button.is-on {

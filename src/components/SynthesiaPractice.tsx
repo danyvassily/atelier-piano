@@ -521,6 +521,13 @@ export function SynthesiaPractice({
     scorerRef.current = new PracticeScorer(section.expected);
   }, [section, tempoFactor]);
 
+  // Le mode attente appartient au transport : le bouton doit agir immédiatement
+  // sans reconstruire le scoreur ni effacer une session déjà commencée.
+  useEffect(() => {
+    transportRef.current.setWaitMode(waitMode);
+    scorerRef.current.enableWaitMode(waitMode);
+  }, [waitMode]);
+
   // Horloge d’image : avance le transport, récolte les oublis et publie l’état.
   // Elle se relance quand la section, le nommage ou le mode attente changent.
   useEffect(() => {
@@ -744,7 +751,7 @@ export function SynthesiaPractice({
         playPauseRef.current();
         return;
       }
-      if (event.code === "KeyR") {
+      if (event.code === "KeyR" && event.shiftKey) {
         event.preventDefault();
         scorePlayerRef.current.stop();
         transportRef.current.reset();
@@ -1001,6 +1008,7 @@ export function SynthesiaPractice({
                 <button
                   key={value}
                   type="button"
+                  data-hand={value}
                   className={hand === value ? "is-on" : ""}
                   aria-pressed={hand === value}
                   onClick={() => {
@@ -1164,6 +1172,7 @@ export function SynthesiaPractice({
           notes={section.notes}
           bpm={score.bpm}
           tempoFactor={tempoFactor}
+          timeSignature={score.timeSignature}
           currentTimeSec={time}
           hand={hand}
           naming={naming}
@@ -1267,7 +1276,7 @@ export function SynthesiaPractice({
         </p>
         <p className="synthesia-key-hint">
           <Keyboard size={18} /> Clavier d’ordinateur : rangées Z–M (grave) et Q–P (aigu), base {displayName(baseMidi, naming, true)} ·{" "}
-          <ArrowLeft size={14} /> <ArrowRight size={14} /> changent d’octave (de −2 à +2) · Espace = lecture/pause · R =
+          <ArrowLeft size={14} /> <ArrowRight size={14} /> changent d’octave (de −2 à +2) · Espace = lecture/pause · Maj+R =
           recommencer
         </p>
       </div>
